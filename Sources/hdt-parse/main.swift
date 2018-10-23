@@ -3,7 +3,8 @@ import HDT
 let filename = CommandLine.arguments.dropFirst().first!
 let p = HDTParser()
 do {
-    let triples = try p.triples(from: filename)
+    let hdt = try p.parse(filename)
+    let triples = try hdt.triples()
     for t in triples {
         print(t)
     }

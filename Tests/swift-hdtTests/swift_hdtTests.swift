@@ -60,32 +60,32 @@ final class HDTTests: XCTestCase {
     }
     
     func testHDTDictionarySections() throws {
-        try p.openHDT(filename)
+        let hdt = try p.parse(filename)
         
         print("============================== TESTING READ OF SHARED SECTION")
-        let (shared, sharedLength) = try p.readDictionaryPartition(at: 1898)
+        let (shared, sharedLength) = try hdt.readDictionaryPartition(at: 1898)
         XCTAssertEqual(shared.count, 23128)
         XCTAssertEqual(sharedLength, 403370)
         
         print("============================== TESTING READ OF SUBJECTS SECTION")
-        let (subjects, subjectsLength) = try p.readDictionaryPartition(at: 405268)
+        let (subjects, subjectsLength) = try hdt.readDictionaryPartition(at: 405268)
         XCTAssertEqual(subjects.count, 182)
         XCTAssertEqual(subjectsLength, 2917)
         
         print("============================== TESTING READ OF PREDICATES SECTION")
-        let (predicates, predicatesLength) = try p.readDictionaryPartition(at: 408185)
+        let (predicates, predicatesLength) = try hdt.readDictionaryPartition(at: 408185)
         XCTAssertEqual(predicates.count, 170)
         XCTAssertEqual(predicatesLength, 2636)
         
         print("============================== TESTING READ OF OBJECTS SECTION")
-        let (objects, objectsLength) = try p.readDictionaryPartition(at: 410821)
+        let (objects, objectsLength) = try hdt.readDictionaryPartition(at: 410821)
         XCTAssertEqual(objects.count, 53401)
         XCTAssertEqual(objectsLength, 4748727)
     }
     
     func testHDTDictionaryParse() throws {
-        try p.openHDT(filename)
-        
+        let hdt = try p.parse(filename)
+
         let tests : [Int64:Term] = [
             1_000: Term(iri: "http://data.semanticweb.org/conference/eswc/2006/roles/paper-presenter-semantic-web-mining-and-personalisation-hoser"),
             76_846: Term(iri: "http://xmlns.com/foaf/0.1/Person"),
@@ -96,8 +96,7 @@ final class HDTTests: XCTestCase {
         
         do {
             let offset : Int64 = 1819
-            let (termDictionary, dictionaryLength) = try p.readDictionary(at: offset)
-            XCTAssertEqual(dictionaryLength, 5157729) // location of $HDT cookie for triples block
+            let termDictionary = try hdt.readDictionary(at: offset)
             XCTAssertEqual(termDictionary.count, 76881)
             
             for (id, expected) in tests {
@@ -113,17 +112,17 @@ final class HDTTests: XCTestCase {
     }
     
     func testHDTTriplesArrayParse() throws {
-        try p.openHDT(filename)
-        
+        let hdt = try p.parse(filename)
+
         let expectedPrefix : [Int64] = [90, 101, 111, 90, 101, 104, 111, 90, 101, 104, 105, 111, 17, 111, 90, 101]
-        let (array, alength) : ([Int64], Int64) = try p.readArray(at: 5210938)
+        let (array, alength) : ([Int64], Int64) = try hdt.readArray(at: 5210938)
         
         let gotPrefix = Array(array.prefix(expectedPrefix.count))
         XCTAssertEqual(gotPrefix, expectedPrefix)
     }
     
     func testHDTTriplesParse() throws {
-        try p.openHDT(filename)
+        let hdt = try p.parse(filename)
 
         let expectedPrefix : [(Int64, Int64, Int64)] = [
             (1, 90, 13304),
@@ -134,8 +133,8 @@ final class HDTTests: XCTestCase {
             (2, 104, 13831),
             (2, 111, 75817),
         ]
-        let (array, length) : (AnyIterator<(Int64, Int64, Int64)>, Int64) = try p.readTriples(at: 5159548)
-        let gotPrefix = Array(array.prefix(expectedPrefix.count))
+        let triples : AnyIterator<(Int64, Int64, Int64)> = try hdt.readTriples(at: 5159548)
+        let gotPrefix = Array(triples.prefix(expectedPrefix.count))
         for (i, d) in zip(gotPrefix, expectedPrefix).enumerated() {
             let (g, e) = d
             print("got triple: \(g)")
@@ -160,7 +159,7 @@ final class HDTTests: XCTestCase {
 
     func testHDTParse() throws {
         do {
-            try p.parse(filename)
+            let hdt = try p.parse(filename)
         } catch let error {
             XCTFail(String(describing: error))
         }
