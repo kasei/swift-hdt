@@ -1,5 +1,13 @@
 import Foundation
 
+struct BitmapTriplesData {
+    var bitmapY : IndexSet
+    var bitmapZ : IndexSet
+    var arrayY : [Int64]
+    var arrayZ : [Int64]
+}
+
+
 public enum TripleOrdering: Int, CustomStringConvertible {
     case unknown = 0
     case spo = 1

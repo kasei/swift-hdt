@@ -35,21 +35,28 @@ public class HDT: FileBased {
         self.state = .opened(fd)
     }
 
+    func term(for id: Int64, position: LookupPosition) -> Term? {
+        fatalError("XXX")
+    }
+    
     public func triples() throws -> AnyIterator<Triple> {
         let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
         let tripleIDs = try readTriples(at: self.triplesMetadata.offset)
-        
         let triples = tripleIDs.lazy.compactMap { t -> Triple? in
-            guard let s = dictionary.term(for: t.0, position: .subject) else {
+            do {
+                guard let s = try dictionary.term(for: t.0, position: .subject) else {
+                    return nil
+                }
+                guard let p = try dictionary.term(for: t.1, position: .predicate) else {
+                    return nil
+                }
+                guard let o = try dictionary.term(for: t.2, position: .object) else {
+                    return nil
+                }
+                return Triple(subject: s, predicate: p, object: o)
+            } catch {
                 return nil
             }
-            guard let p = dictionary.term(for: t.1, position: .predicate) else {
-                return nil
-            }
-            guard let o = dictionary.term(for: t.2, position: .object) else {
-                return nil
-            }
-            return Triple(subject: s, predicate: p, object: o)
         }
         
         return AnyIterator(triples.makeIterator())
@@ -138,13 +145,6 @@ public class HDT: FileBased {
         return AnyIterator(gen)
     }
 
-    struct BitmapTriplesData {
-        var bitmapY : IndexSet
-        var bitmapZ : IndexSet
-        var arrayY : [Int64]
-        var arrayZ : [Int64]
-    }
-    
     func readTriplesBitmap(at offset: off_t) throws -> (BitmapTriplesData, Int64) {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
@@ -166,64 +166,70 @@ public class HDT: FileBased {
         return (data, length)
     }
 
-    func readDictionaryTypeFour(at offset: off_t) throws -> HDTDictionary {
-        guard case .opened(let fd) = state else {
-            throw HDTError.error("HDT file not opened")
-        }
-        let size = 64 * 1024 * 1024
-        var readBuffer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 0)
-        defer { readBuffer.deallocate() }
-        let r = pread(fd, readBuffer, size, offset)
-        guard r > 4 else { throw HDTError.error("Not enough bytes read for HDT dictionary") }
-        
-        var offset = offset
-        
-        warn("reading dictionary: shared at \(offset)")
-        let (shared, sharedLength) = try readDictionaryPartition(at: offset, generator: soCounter)
-        offset += sharedLength
-        warn("read \(shared.count) shared terms")
-        
-        warn("offset: \(offset)")
-        
-        warn("reading dictionary: subjects at \(offset)")
-        let (subjects, subjectsLength) = try readDictionaryPartition(at: offset, generator: soCounter)
-        offset += subjectsLength
-        warn("read \(subjects.count) subject terms")
-        
-        warn("reading dictionary: predicates at \(offset)")
-        let (predicates, predicatesLength) = try readDictionaryPartition(at: offset, generator: pCounter)
-        offset += predicatesLength
-        warn("read \(predicates.count) predicate terms")
-        
-        warn("reading dictionary: objects at \(offset)")
-        let (objects, objectsLength) = try readDictionaryPartition(at: offset, generator: soCounter)
-        offset += objectsLength
-        warn("read \(objects.count) object terms")
-        
-        let currentLength = sharedLength + subjectsLength + predicatesLength + objectsLength
-        let currentPostion = offset + currentLength
-        //        warn("current postion after dictionary read: \(currentPostion)")
-        
-        return HDTDictionary(shared: shared, subjects: subjects, predicates: predicates, objects: objects)
-    }
-    
-    func readDictionary(at offset: off_t) throws -> HDTDictionary {
-//        guard let mappingString = info.properties["mapping"] else {
-//            throw HDTError.error("No mapping found in dictionary control information")
+//    func readDictionaryTypeFour(at offset: off_t) throws -> HDTDictionary {
+//        guard case .opened(let fd) = state else {
+//            throw HDTError.error("HDT file not opened")
 //        }
-//        guard let mapping = Int(mappingString) else {
-//            throw HDTError.error("Invalid mapping found in dictionary control information")
-//        }
-//        //        warn("Dictionary mapping: \(mapping)")
+//        let size = 64 * 1024 * 1024
+//        var readBuffer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 0)
+//        defer { readBuffer.deallocate() }
+//        let r = pread(fd, readBuffer, size, offset)
+//        guard r > 4 else { throw HDTError.error("Not enough bytes read for HDT dictionary") }
+//
+//        var offset = offset
+//
+//        warn("reading dictionary: shared at \(offset)")
+//        let (shared, sharedLength) = try readDictionaryPartition(at: offset, generator: soCounter)
+//        offset += sharedLength
+//        warn("read \(shared.count) shared terms")
+//
+//        warn("offset: \(offset)")
+//
+//        warn("reading dictionary: subjects at \(offset)")
+//        let (subjects, subjectsLength) = try readDictionaryPartition(at: offset, generator: soCounter)
+//        offset += subjectsLength
+//        warn("read \(subjects.count) subject terms")
+//
+//        warn("reading dictionary: predicates at \(offset)")
+//        let (predicates, predicatesLength) = try readDictionaryPartition(at: offset, generator: pCounter)
+//        offset += predicatesLength
+//        warn("read \(predicates.count) predicate terms")
+//
+//        warn("reading dictionary: objects at \(offset)")
+//        let (objects, objectsLength) = try readDictionaryPartition(at: offset, generator: soCounter)
+//        offset += objectsLength
+//        warn("read \(objects.count) object terms")
+//
+//        let currentLength = sharedLength + subjectsLength + predicatesLength + objectsLength
+//        let currentPostion = offset + currentLength
+//        //        warn("current postion after dictionary read: \(currentPostion)")
+//
+//        return HDTDictionary(shared: shared, subjects: subjects, predicates: predicates, objects: objects)
+//    }
+
+    func readDictionary(at offset: off_t) throws -> HDTDictionaryProtocol {
         switch dictionaryMetadata.type {
         case .fourPart:
-            let d = try readDictionaryTypeFour(at: dictionaryMetadata.offset)
+            warn("using lazy dictionary")
+            let d = try HDTLazyFourPartDictionary(metadata: dictionaryMetadata, state: state)
+//                d.forEach { (pos, id, term) in
+//                    print("term >>> \(pos) \(id) \(term)")
+//                }
             return d
         default:
             throw HDTError.error("unimplemented dictionary format type: \(dictionaryMetadata.type)")
         }
     }
-
+    
+    func readLazyDictionary(at offset: off_t) throws -> HDTDictionaryProtocol {
+        switch dictionaryMetadata.type {
+        case .fourPart:
+            return try HDTLazyFourPartDictionary(metadata: dictionaryMetadata, state: state)
+        default:
+            throw HDTError.error("unimplemented dictionary format type: \(dictionaryMetadata.type)")
+        }
+    }
+    
     func readDictionaryPartition(at offset: off_t, generator: AnyIterator<Int64>) throws -> ([Int64: Term], Int64) {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
@@ -271,7 +277,10 @@ public class HDT: FileBased {
         let (termDictionary, dataLength) = try readAllDictionaryBlocks(bufferBlocks: blocksArray, at: dataBlockPosition, length: bytesCount, count: stringCount, maximumStringsPerBlock: blockSize, generator: generator)
         ptr += Int(dataLength)
         
-        
+//        print("dictionary length (metadata) : \(bytesCount)")
+//        print("dictionary length (read)     : \(dataLength)")
+//        print("==============")
+
         let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
         // TODO: verify crc
         let crcLength = 4
@@ -297,9 +306,7 @@ public class HDT: FileBased {
             let termID = generator.next()!
             generated += 1
             let id = termID
-            if false {
-                warn("    - TERM: \(id): \(s)")
-            }
+            warn("    - TERM: \(id): \(s)")
             
             if s.hasPrefix("_:") {
                 dictionary[id] = Term(value: String(s.dropFirst(2)), type: .blank)
@@ -380,13 +387,20 @@ public class HDT: FileBased {
                 if let next = next {
                     let currentOffset = readBuffer.distance(to: ptr)
                     if currentOffset > next {
-                        warn("blocks: \(blocks)")
-                        warn("current offset: \(blockOffset)")
-                        warn("generated \(generatedInBlock) terms in block")
-                        warn("current offset in block \(currentOffset) extends beyond next block offset \(next)")
+                        print("blocks: \(blocks)")
+                        print("current offset: \(blockOffset)")
+                        print("generated \(generatedInBlock) terms in block")
+                        print("current offset in block \(currentOffset) extends beyond next block offset \(next)")
                         assert(false)
                     }
-                    assert(readBuffer.distance(to: ptr) <= next)
+                    let dist = readBuffer.distance(to: ptr)
+                    if dist > next {
+                        print("A: \(dist) <= \(next)")
+                    }
+                    assert(dist <= next)
+                }
+                if generated > count {
+                    print("B: \(generated) <= \(count)")
                 }
                 assert(generated <= count)
             }

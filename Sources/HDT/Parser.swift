@@ -2,8 +2,12 @@ import Darwin
 import Foundation
 import SPARQLSyntax
 import CryptoSwift
+import os.log
+import os.signpost
 
 public class HDTParser: FileBased {
+    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+
     enum ControlType : UInt8 {
         case unknown = 0
         case global = 1
@@ -60,14 +64,20 @@ public class HDTParser: FileBased {
         let (info, ciLength) = try readControlInformation(at: offset)
         offset += ciLength
         
+        os_signpost(.begin, log: log, name: "Parsing Header", "Begin")
         let (header, headerLength) = try readHeader(at: offset)
         offset += headerLength
-        
+        os_signpost(.end, log: log, name: "Parsing Header", "Finished")
+
+        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Finished")
         let (dictionary, dictionaryLength) = try parseDictionary(at: offset)
         offset += dictionaryLength
-        
+        os_signpost(.end, log: log, name: "Parsing Dictionary", "Finished")
+
+        os_signpost(.begin, log: log, name: "Parsing Triples", "Finished")
         let triples = try parseTriples(at: offset)
-        
+        os_signpost(.end, log: log, name: "Parsing Triples", "Finished")
+
         return try HDT(
             filename: filename,
             header: header,
@@ -80,11 +90,17 @@ public class HDTParser: FileBased {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
         }
-        let size = 64 * 1024 * 1024 // TODO: this shouldn't be hard-coded
+        let size = 2000 * 1024 * 1024 // TODO: this shouldn't be hard-coded
         var readBuffer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 0)
         defer { readBuffer.deallocate() }
         let r = pread(fd, readBuffer, size, offset)
-        guard r > 4 else { throw HDTError.error("Not enough bytes read for HDT dictionary") }
+        guard r != -1 else {
+            perror("Read failed for HDT dictionary")
+            throw HDTError.error("Read failed HDT dictionary")
+        }
+        guard r > 4 else {
+            throw HDTError.error("Not enough bytes read for HDT dictionary")
+        }
         
         // NOTE: HDT docs say this should be a u32, but the code says otherwise
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)

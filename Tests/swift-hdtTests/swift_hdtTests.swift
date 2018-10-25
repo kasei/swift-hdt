@@ -86,25 +86,27 @@ final class HDTTests: XCTestCase {
         XCTAssertEqual(objectsLength, 4748727)
     }
     
+    let expectedTermTests : [(Int64, LookupPosition, Term)] = [
+        (8, .subject, Term(value: "b5", type: .blank)),
+        (9, .subject, Term(value: "b6", type: .blank)),
+        (1_000, .subject, Term(iri: "http://data.semanticweb.org/conference/eswc/2006/roles/paper-presenter-semantic-web-mining-and-personalisation-hoser")),
+        (76_494, .object, Term(iri: "http://xmlns.com/foaf/0.1/Person")),
+        (31_100, .object, Term(string: "Alvaro")),
+        (118, .predicate, Term(iri: "http://www.w3.org/2000/01/rdf-schema#label")),
+        //            29_177: Term(value: "7th International Semantic Web Conference", type: .language("en")),
+        //            26_183: Term(integer: 3),
+        ]
+
     func testHDTDictionaryParse() throws {
         let hdt = try p.parse(filename)
-
-        let tests : [(Int64, HDTDictionary.LookupPosition, Term)] = [
-            (1_000, .subject, Term(iri: "http://data.semanticweb.org/conference/eswc/2006/roles/paper-presenter-semantic-web-mining-and-personalisation-hoser")),
-            (76_676, .subject, Term(iri: "http://xmlns.com/foaf/0.1/Person")),
-            (31_282, .object, Term(string: "Alvaro")),
-//            29_177: Term(value: "7th International Semantic Web Conference", type: .language("en")),
-//            26_183: Term(integer: 3),
-            (118, .predicate, Term(iri: "http://www.w3.org/2000/01/rdf-schema#label")),
-            ]
         
         do {
             let offset : Int64 = 1819
             let termDictionary = try hdt.readDictionary(at: offset)
             XCTAssertEqual(termDictionary.count, 76881)
             
-            for (id, pos, expected) in tests {
-                guard let term = termDictionary.term(for: id, position: pos) else {
+            for (id, pos, expected) in expectedTermTests {
+                guard let term = try termDictionary.term(for: id, position: pos) else {
                     XCTFail("No term found for ID \(id)")
                     return
                 }

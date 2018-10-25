@@ -27,7 +27,7 @@ struct StderrOutputStream: TextOutputStream {
 }
 var errStream = StderrOutputStream.stream
 public func warn(_ item: Any) {
-    if true {
+    if false {
         print(item, to: &errStream)
     }
 }
@@ -62,7 +62,7 @@ extension FileBased {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
         }
-        let size = 1024 * 1024 * 1024 // TODO: this shouldn't be hard-coded
+        let size = 2000 * 1024 * 1024 // TODO: this shouldn't be hard-coded
         var readBuffer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 0)
         defer { readBuffer.deallocate() }
         let r = pread(fd, readBuffer, size, offset)
@@ -78,6 +78,7 @@ extension FileBased {
         var ptr = readBuffer + typeLength
         let bitCount = Int(readVByte(&ptr))
         let bytes = (bitCount + 7)/8
+        print("reading bitmap data: \(bytes) bytes")
         
         let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         // TODO: verify crc
