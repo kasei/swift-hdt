@@ -91,10 +91,11 @@ final class HDTTests: XCTestCase {
 
         let tests : [(Int64, HDTDictionary.LookupPosition, Term)] = [
             (1_000, .subject, Term(iri: "http://data.semanticweb.org/conference/eswc/2006/roles/paper-presenter-semantic-web-mining-and-personalisation-hoser")),
-            (76_846, .object, Term(iri: "http://xmlns.com/foaf/0.1/Person")),
-            (31_452, .object, Term(string: "Alvaro")),
+            (76_676, .subject, Term(iri: "http://xmlns.com/foaf/0.1/Person")),
+            (31_282, .object, Term(string: "Alvaro")),
 //            29_177: Term(value: "7th International Semantic Web Conference", type: .language("en")),
 //            26_183: Term(integer: 3),
+            (118, .predicate, Term(iri: "http://www.w3.org/2000/01/rdf-schema#label")),
             ]
         
         do {
