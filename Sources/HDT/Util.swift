@@ -20,3 +20,14 @@ extension Data {
     }
 }
 
+
+struct StderrOutputStream: TextOutputStream {
+    public static let stream = StderrOutputStream()
+    public func write(_ string: String) {fputs(string, stderr)}
+}
+var errStream = StderrOutputStream.stream
+public func warn(_ item: Any) {
+    if false {
+        print(item, to: &errStream)
+    }
+}

@@ -93,7 +93,7 @@ extension FileBased {
         case 1:
             let (blocks, blocksLength) = try readSequence(at: offset, assertType: 1)
             let array = blocks.map { Int64($0) }
-            print("array prefix: \(array.prefix(32))")
+            warn("array prefix: \(array.prefix(32))")
             return (array, blocksLength)
         case 2:
             fatalError("TODO: Array read unimplemented: uint32")
@@ -122,27 +122,27 @@ extension FileBased {
             guard type == assertType else {
                 throw HDTError.error("Invalid dictionary LogSequence2 type (\(type)) at offset \(offset)")
             }
-            print("Sequence type: \(type)")
+            warn("Sequence type: \(type)")
         } else {
             typeLength = 0
         }
         
         let bits = Int(p[typeLength])
         let bitsLength = 1
-        print("Sequence bits: \(bits)")
+        warn("Sequence bits: \(bits)")
         
         var ptr = readBuffer + typeLength + bitsLength
         let entriesCount = Int(readVByte(&ptr))
-        print("Sequence entries: \(entriesCount)")
+        warn("Sequence entries: \(entriesCount)")
         
         let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         // TODO: verify crc
         ptr += 1
         
         let arraySize = (bits * entriesCount + 7) / 8
-        print("Array size for log sequence: \(arraySize)")
+        warn("Array size for log sequence: \(arraySize)")
         let sequenceDataOffset = Int64(readBuffer.distance(to: ptr))
-        print("Offset for log sequence: \(sequenceDataOffset)")
+        warn("Offset for log sequence: \(sequenceDataOffset)")
         
         let sequenceData = try readData(at: offset + sequenceDataOffset, length: arraySize)
         ptr += arraySize
@@ -173,13 +173,13 @@ func readVByte(_ ptr : inout UnsafeMutableRawPointer) -> UInt {
         let b = p[0]
         let bvalue = UInt(b & 0x7f)
         cont = ((b & 0x80) == 0)
-        //            print("vbyte: \(String(format: "0x%02x", b)), byte value=\(bvalue), continue=\(cont)")
+        //            warn("vbyte: \(String(format: "0x%02x", b)), byte value=\(bvalue), continue=\(cont)")
         p += 1
         value += bvalue << shift;
         shift += 7
     } while cont
     let bytes = ptr.distance(to: p)
-    //        print("read \(bytes) bytes to produce value \(value)")
+    //        warn("read \(bytes) bytes to produce value \(value)")
     ptr = UnsafeMutableRawPointer(p)
     return value
 }
@@ -187,6 +187,37 @@ func readVByte(_ ptr : inout UnsafeMutableRawPointer) -> UInt {
 
 public enum HDTError: Error {
     case error(String)
+}
+
+public struct HDTDictionary {
+    public enum LookupPosition {
+        case subject
+        case predicate
+        case object
+    }
+    
+    var shared: [Int64: Term]
+    var subjects: [Int64: Term]
+    var predicates: [Int64: Term]
+    var objects: [Int64: Term]
+    
+    public var count: Int {
+        return shared.count + subjects.count + predicates.count + objects.count
+    }
+    
+    public func term(for id: Int64, position: LookupPosition) -> Term? {
+        if case .predicate = position {
+            return predicates[id]
+        } else {
+            if let t = shared[id] {
+                return t
+            } else if let t = subjects[id] {
+                return t
+            } else {
+                return objects[id]
+            }
+        }
+    }
 }
 
 struct DictionaryMetadata {
@@ -234,7 +265,8 @@ public class HDT: FileBased {
     var triplesMetadata: TriplesMetadata
     var dictionaryMetadata: DictionaryMetadata
     public var state: FileState
-    var idCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
+    var soCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
+    var pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
 
     init(filename: String, header: String, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
         self.filename = filename
@@ -261,13 +293,13 @@ public class HDT: FileBased {
         let tripleIDs = try readTriples(at: self.triplesMetadata.offset)
         
         let triples = tripleIDs.lazy.compactMap { t -> Triple? in
-            guard let s = dictionary[t.0] else {
+            guard let s = dictionary.term(for: t.0, position: .subject) else {
                 return nil
             }
-            guard let p = dictionary[t.1] else {
+            guard let p = dictionary.term(for: t.1, position: .predicate) else {
                 return nil
             }
-            guard let o = dictionary[t.2] else {
+            guard let o = dictionary.term(for: t.2, position: .object) else {
                 return nil
             }
             return Triple(subject: s, predicate: p, object: o)
@@ -297,7 +329,7 @@ public class HDT: FileBased {
     
 
     func readTriples(at offset: off_t) throws -> AnyIterator<(Int64, Int64, Int64)> {
-        print("reading triples at offset \(offset)")
+        warn("reading triples at offset \(offset)")
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
         }
@@ -327,7 +359,7 @@ public class HDT: FileBased {
         let gen = { () -> (I.Element, E)? in
             repeat {
                 if !data.isEmpty {
-                    //                    print("- removing element from pending array of size \(data.count)")
+                    //                    warn("- removing element from pending array of size \(data.count)")
                     return data.remove(at: 0)
                 }
                 guard let next = elements.next() else {
@@ -347,12 +379,12 @@ public class HDT: FileBased {
                     }
                 } while !bits.contains(currentIndex-1)
                 
-                //                print("k=\(k)")
-                //                print("index set: \(bits)")
+                //                warn("k=\(k)")
+                //                warn("index set: \(bits)")
                 
                 let pairs = array.prefix(k).map { (next, $0) }
                 array.removeFirst(k)
-                //                print("+ adding pending results x \(pairs.count)")
+                //                warn("+ adding pending results x \(pairs.count)")
                 data.append(contentsOf: pairs)
             } while true
         }
@@ -376,7 +408,7 @@ public class HDT: FileBased {
         let r = pread(fd, readBuffer, size, offset)
         guard r > 0 else { throw HDTError.error("Not enough bytes read for HDT triples") }
         
-        print("bitmap triples at \(offset)")
+        warn("bitmap triples at \(offset)")
         let (bitmapY, byLength) = try readBitmap(at: offset)
         let (bitmapZ, bzLength) = try readBitmap(at: offset + byLength)
         let (arrayY, ayLength) = try readArray(at: offset + byLength + bzLength)
@@ -387,7 +419,7 @@ public class HDT: FileBased {
         return (data, length)
     }
 
-    func readDictionaryTypeFour(at offset: off_t) throws -> [Int64: Term] {
+    func readDictionaryTypeFour(at offset: off_t) throws -> HDTDictionary {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
         }
@@ -399,57 +431,43 @@ public class HDT: FileBased {
         
         var offset = offset
         
-        print("reading dictionary: shared at \(offset)")
-        let (shared, sharedLength) = try readDictionaryPartition(at: offset)
+        warn("reading dictionary: shared at \(offset)")
+        let (shared, sharedLength) = try readDictionaryPartition(at: offset, generator: soCounter)
         offset += sharedLength
-        print("read \(shared.count) shared terms")
+        warn("read \(shared.count) shared terms")
         
-        print("offset: \(offset)")
+        warn("offset: \(offset)")
         
-        print("reading dictionary: subjects at \(offset)")
-        let (subjects, subjectsLength) = try readDictionaryPartition(at: offset)
+        warn("reading dictionary: subjects at \(offset)")
+        let (subjects, subjectsLength) = try readDictionaryPartition(at: offset, generator: soCounter)
         offset += subjectsLength
-        print("read \(subjects.count) subject terms")
+        warn("read \(subjects.count) subject terms")
         
-        print("reading dictionary: predicates at \(offset)")
-        let (predicates, predicatesLength) = try readDictionaryPartition(at: offset)
+        warn("reading dictionary: predicates at \(offset)")
+        let (predicates, predicatesLength) = try readDictionaryPartition(at: offset, generator: pCounter)
         offset += predicatesLength
-        print("read \(predicates.count) predicate terms")
+        warn("read \(predicates.count) predicate terms")
         
-        print("reading dictionary: objects at \(offset)")
-        let (objects, objectsLength) = try readDictionaryPartition(at: offset)
+        warn("reading dictionary: objects at \(offset)")
+        let (objects, objectsLength) = try readDictionaryPartition(at: offset, generator: soCounter)
         offset += objectsLength
-        print("read \(objects.count) object terms")
+        warn("read \(objects.count) object terms")
         
         let currentLength = sharedLength + subjectsLength + predicatesLength + objectsLength
         let currentPostion = offset + currentLength
-        //        print("current postion after dictionary read: \(currentPostion)")
+        //        warn("current postion after dictionary read: \(currentPostion)")
         
-        var d = [Int64: Term]()
-        d.merge(shared) {
-            $1
-        }
-        d.merge(subjects) {
-            $1
-        }
-        d.merge(predicates) {
-            $1
-        }
-        d.merge(objects) {
-            $1
-        }
-        
-        return d
+        return HDTDictionary(shared: shared, subjects: subjects, predicates: predicates, objects: objects)
     }
     
-    func readDictionary(at offset: off_t) throws -> [Int64: Term] {
+    func readDictionary(at offset: off_t) throws -> HDTDictionary {
 //        guard let mappingString = info.properties["mapping"] else {
 //            throw HDTError.error("No mapping found in dictionary control information")
 //        }
 //        guard let mapping = Int(mappingString) else {
 //            throw HDTError.error("Invalid mapping found in dictionary control information")
 //        }
-//        //        print("Dictionary mapping: \(mapping)")
+//        //        warn("Dictionary mapping: \(mapping)")
         switch dictionaryMetadata.type {
         case .fourPart:
             let d = try readDictionaryTypeFour(at: dictionaryMetadata.offset)
@@ -459,7 +477,7 @@ public class HDT: FileBased {
         }
     }
 
-    func readDictionaryPartition(at offset: off_t) throws -> ([Int64: Term], Int64) {
+    func readDictionaryPartition(at offset: off_t, generator: AnyIterator<Int64>) throws -> ([Int64: Term], Int64) {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
         }
@@ -473,17 +491,14 @@ public class HDT: FileBased {
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
-        print("dictionary type: \(type) (at offset \(offset))")
+        warn("dictionary type: \(type) (at offset \(offset))")
         guard type == 2 else {
             throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)
         let _c = ptr.assumingMemoryBound(to: CChar.self)
-        print(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
-        
-        
-        
+        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
         
         let stringCount = Int(readVByte(&ptr)) // numstrings
         let bytesCount = Int(readVByte(&ptr))
@@ -494,19 +509,19 @@ public class HDT: FileBased {
         // TODO: verify CRC
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
-        print("dictionary entries: \(stringCount)")
-        print("dictionary byte count: \(bytesCount)")
-        print("dictionary block size: \(blockSize)")
-        print("CRC: \(String(format: "%02x\n", Int(crc8)))")
+        warn("dictionary entries: \(stringCount)")
+        warn("dictionary byte count: \(bytesCount)")
+        warn("dictionary block size: \(blockSize)")
+        warn("CRC: \(String(format: "%02x\n", Int(crc8)))")
         
         let (blocks, blocksLength) = try readSequence(at: offset + dictionaryHeaderLength, assertType: 1)
         ptr += Int(blocksLength)
-        print("sequence length: \(blocksLength)")
-        //        print("sequence data (\(Array(blocks).count) elements): \(Array(blocks))")
+        warn("sequence length: \(blocksLength)")
+        //        warn("sequence data (\(Array(blocks).count) elements): \(Array(blocks))")
         
         let blocksArray = Array(blocks)
         let dataBlockPosition = offset + dictionaryHeaderLength + blocksLength
-        let (termDictionary, dataLength) = try readAllDictionaryBlocks(bufferBlocks: blocksArray, at: dataBlockPosition, length: bytesCount, count: stringCount, maximumStringsPerBlock: blockSize)
+        let (termDictionary, dataLength) = try readAllDictionaryBlocks(bufferBlocks: blocksArray, at: dataBlockPosition, length: bytesCount, count: stringCount, maximumStringsPerBlock: blockSize, generator: generator)
         ptr += Int(dataLength)
         
         
@@ -521,7 +536,7 @@ public class HDT: FileBased {
         return (termDictionary, length)
     }
 
-    func readAllDictionaryBlocks<C: Collection>(bufferBlocks blocks: C, at offset: off_t, length size: Int, count: Int, maximumStringsPerBlock: Int) throws -> ([Int64: Term], Int64) where C.Element == Int {
+    func readAllDictionaryBlocks<C: Collection>(bufferBlocks blocks: C, at offset: off_t, length size: Int, count: Int, maximumStringsPerBlock: Int, generator: AnyIterator<Int64>) throws -> ([Int64: Term], Int64) where C.Element == Int {
         guard case .opened(let fd) = state else {
             throw HDTError.error("HDT file not opened")
         }
@@ -532,11 +547,11 @@ public class HDT: FileBased {
         var generated : Int64 = 0
         var dictionary = [Int64: Term]()
         let generateTerm = { (s: String) in
-            let termID = self.idCounter.next()!
+            let termID = generator.next()!
             generated += 1
             let id = termID
             if false {
-                print("    - \(id): \(s)")
+                warn("    - TERM: \(id): \(s)")
             }
             
             if s.hasPrefix("_:") {
@@ -545,9 +560,9 @@ public class HDT: FileBased {
                 dictionary[id] = Term(string: String(s.dropFirst().dropLast()))
                 
                 if s.contains("\"@") {
-                    print("TODO: handle language literals")
+                    warn("TODO: handle language literals")
                 } else if s.contains("\"^^") {
-                    print("TODO: handle datatype literals")
+                    warn("TODO: handle datatype literals")
                 }
             } else {
                 dictionary[id] = Term(iri: s)
@@ -563,25 +578,25 @@ public class HDT: FileBased {
             
             let currentOffset = readBuffer.distance(to: ptr)
             if currentOffset >= size {
-                //                print("******** done 2")
+                //                warn("******** done 2")
                 break
             }
             
             
-            //            print("buffer block at offset \(blockOffset)")
+            //            warn("buffer block at offset \(blockOffset)")
             ptr = readBuffer + blockOffset
             var commonPrefix = String(cString: ptr.assumingMemoryBound(to: CChar.self))
-            //            print("- first string in dictionary block: '\(commonPrefix)'")
+            //            warn("- first string in dictionary block: '\(commonPrefix)'")
             generateTerm(commonPrefix)
             ptr += commonPrefix.utf8.count + 1
             for _ in 1..<maximumStringsPerBlock {
                 if generated >= count {
-                    //                    print("******** done 1")
+                    //                    warn("******** done 1")
                     break
                 }
                 
                 let sharedPrefixLength = readVByte(&ptr)
-                //                print("-- shared prefix length: \(sharedPrefixLength)")
+                //                warn("-- shared prefix length: \(sharedPrefixLength)")
                 let prefixData = commonPrefix.data(using: .utf8)!
                 var bytes : [CChar] = prefixData.withUnsafeBytes { (ptr: UnsafePointer<CChar>) in
                     var bytes = [CChar]()
@@ -605,7 +620,7 @@ public class HDT: FileBased {
                 }
                 bytes.append(0)
                 ptr += suffixLength
-                //                print("-- suffix length: \(suffixLength)")
+                //                warn("-- suffix length: \(suffixLength)")
                 
                 commonPrefix = String(cString: bytes)
                 generateTerm(commonPrefix)
@@ -618,10 +633,10 @@ public class HDT: FileBased {
                 if let next = next {
                     let currentOffset = readBuffer.distance(to: ptr)
                     if currentOffset > next {
-                        print("blocks: \(blocks)")
-                        print("current offset: \(blockOffset)")
-                        print("generated \(generatedInBlock) terms in block")
-                        print("current offset in block \(currentOffset) extends beyond next block offset \(next)")
+                        warn("blocks: \(blocks)")
+                        warn("current offset: \(blockOffset)")
+                        warn("generated \(generatedInBlock) terms in block")
+                        warn("current offset in block \(currentOffset) extends beyond next block offset \(next)")
                         assert(false)
                     }
                     assert(readBuffer.distance(to: ptr) <= next)
@@ -631,7 +646,7 @@ public class HDT: FileBased {
             
             let endingID = generated
             let generatedInBlock = endingID - startingID
-            //            print("generated \(generatedInBlock) terms in block")
+            //            warn("generated \(generatedInBlock) terms in block")
         }
         
         let bytes = readBuffer.distance(to: ptr)

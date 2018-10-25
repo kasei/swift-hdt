@@ -61,24 +61,27 @@ final class HDTTests: XCTestCase {
     
     func testHDTDictionarySections() throws {
         let hdt = try p.parse(filename)
-        
+
+        var soCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
+        var pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
+
         print("============================== TESTING READ OF SHARED SECTION")
-        let (shared, sharedLength) = try hdt.readDictionaryPartition(at: 1898)
+        let (shared, sharedLength) = try hdt.readDictionaryPartition(at: 1898, generator: soCounter)
         XCTAssertEqual(shared.count, 23128)
         XCTAssertEqual(sharedLength, 403370)
         
         print("============================== TESTING READ OF SUBJECTS SECTION")
-        let (subjects, subjectsLength) = try hdt.readDictionaryPartition(at: 405268)
+        let (subjects, subjectsLength) = try hdt.readDictionaryPartition(at: 405268, generator: soCounter)
         XCTAssertEqual(subjects.count, 182)
         XCTAssertEqual(subjectsLength, 2917)
         
         print("============================== TESTING READ OF PREDICATES SECTION")
-        let (predicates, predicatesLength) = try hdt.readDictionaryPartition(at: 408185)
+        let (predicates, predicatesLength) = try hdt.readDictionaryPartition(at: 408185, generator: pCounter)
         XCTAssertEqual(predicates.count, 170)
         XCTAssertEqual(predicatesLength, 2636)
         
         print("============================== TESTING READ OF OBJECTS SECTION")
-        let (objects, objectsLength) = try hdt.readDictionaryPartition(at: 410821)
+        let (objects, objectsLength) = try hdt.readDictionaryPartition(at: 410821, generator: soCounter)
         XCTAssertEqual(objects.count, 53401)
         XCTAssertEqual(objectsLength, 4748727)
     }
@@ -86,10 +89,10 @@ final class HDTTests: XCTestCase {
     func testHDTDictionaryParse() throws {
         let hdt = try p.parse(filename)
 
-        let tests : [Int64:Term] = [
-            1_000: Term(iri: "http://data.semanticweb.org/conference/eswc/2006/roles/paper-presenter-semantic-web-mining-and-personalisation-hoser"),
-            76_846: Term(iri: "http://xmlns.com/foaf/0.1/Person"),
-            31_452: Term(string: "Alvaro"),
+        let tests : [(Int64, HDTDictionary.LookupPosition, Term)] = [
+            (1_000, .subject, Term(iri: "http://data.semanticweb.org/conference/eswc/2006/roles/paper-presenter-semantic-web-mining-and-personalisation-hoser")),
+            (76_846, .object, Term(iri: "http://xmlns.com/foaf/0.1/Person")),
+            (31_452, .object, Term(string: "Alvaro")),
 //            29_177: Term(value: "7th International Semantic Web Conference", type: .language("en")),
 //            26_183: Term(integer: 3),
             ]
@@ -99,8 +102,8 @@ final class HDTTests: XCTestCase {
             let termDictionary = try hdt.readDictionary(at: offset)
             XCTAssertEqual(termDictionary.count, 76881)
             
-            for (id, expected) in tests {
-                guard let term = termDictionary[id] else {
+            for (id, pos, expected) in tests {
+                guard let term = termDictionary.term(for: id, position: pos) else {
                     XCTFail("No term found for ID \(id)")
                     return
                 }
