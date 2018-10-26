@@ -4,7 +4,7 @@ import SPARQLSyntax
 
 final class HDTTests: XCTestCase {
     var filename : String!
-    var p : HDTParser!
+    var p : HDTFileParser!
     
     static var allTests = [
         ("testHDTHeader", testHDTHeader),
@@ -18,7 +18,7 @@ final class HDTTests: XCTestCase {
 
     override func setUp() {
         self.filename = "/Users/greg/data/datasets/swdf-2012-11-28.hdt"
-        self.p = HDTParser()
+        self.p = HDTFileParser()
     }
     
     func testHDTHeader() throws {

@@ -5,7 +5,7 @@ import CryptoSwift
 import os.log
 import os.signpost
 
-public class HDTParser: FileBased {
+public class HDTFileParser: FileBased {
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 
     enum ControlType : UInt8 {
