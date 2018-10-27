@@ -14,7 +14,10 @@ do {
 
     os_signpost(.begin, log: log, name: "Enumerating Triples", "Begin")
     let triples = try hdt.triples()
-    for t in triples {
+    for (i, t) in triples.enumerated() {
+        if i % 10_000 == 0 {
+            os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
+        }
         print(t)
     }
     os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")

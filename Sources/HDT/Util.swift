@@ -18,28 +18,66 @@ extension Data {
         }
     }
 
-    // TODO: make getFields(_:count:) return AnyIterator<Int>
-    public func getFields(width bitsField: Int, count: Int) -> [Int] {
-        var values = [Int](reserveCapacity: count)
-        for index in 0..<count {
-            let type = UInt32.self
-            let bitWidth = type.bitWidth
-            let bitPos = index * bitsField
-            let i = bitPos / bitWidth
-            let j = bitPos % bitWidth
-            if (j+bitsField) <= bitWidth {
-                let d : UInt32 = self.withUnsafeBytes { $0[i] }
-                let v = Int((d << (bitWidth-j-bitsField)) >> (bitWidth-bitsField))
-                values.append(v)
-            } else {
-                let (_r, _d) = self.withUnsafeBytes { (p) -> (UInt32, UInt32) in (p[i], p[i+1]) }
-                let r = Int(_r >> j)
-                let d = Int(_d << ((bitWidth<<1) - j - bitsField))
-                let v = r | (d >> (bitWidth-bitsField))
-                values.append(v)
+    public func getFields(width bitsField: Int, count: Int) -> AnySequence<Int> {
+        let values1 = getFields1(width: bitsField, count: count)
+        let values2 = getFields2(width: bitsField, count: count)
+        print("\(values1)")
+        return AnySequence(values2)
+    }
+    
+    public func getFields1(width bitsField: Int, count: Int) -> AnySequence<Int> {
+        let type = UInt32.self
+        let bitWidth = type.bitWidth
+        
+        return AnySequence { () -> AnyIterator<Int> in
+            var index = 0
+            return AnyIterator {
+                guard index < count else {
+                    return nil
+                }
+                let bitPos = index * bitsField
+                index += 1
+                let i = bitPos / bitWidth
+                let j = bitPos % bitWidth
+                if (j+bitsField) <= bitWidth {
+                    let d : UInt32 = self.withUnsafeBytes { $0[i] }
+                    let v = Int((d << (bitWidth-j-bitsField)) >> (bitWidth-bitsField))
+                    return v
+                } else {
+                    let (_r, _d) = self.withUnsafeBytes { (p) -> (UInt32, UInt32) in (p[i], p[i+1]) }
+                    let r = Int(_r >> j)
+                    let d = Int(_d << ((bitWidth<<1) - j - bitsField))
+                    let v = r | (d >> (bitWidth-bitsField))
+                    return v
+                }
             }
         }
-        return values
+    }
+
+    public func getFields2(width bitsField: Int, count: Int) -> [Int] {
+        let type = UInt32.self
+        let bitWidth = type.bitWidth
+        
+        return self.withUnsafeBytes { (p : UnsafePointer<UInt32>) -> [Int] in
+            var values = [Int](reserveCapacity: count)
+            for index in 0..<count {
+                let bitPos = index * bitsField
+                let i = bitPos / bitWidth
+                let j = bitPos % bitWidth
+                if (j+bitsField) <= bitWidth {
+                    let d : UInt32 = self.withUnsafeBytes { $0[i] }
+                    let v = Int((d << (bitWidth-j-bitsField)) >> (bitWidth-bitsField))
+                    values.append(v)
+                } else {
+                    let (_r, _d) = self.withUnsafeBytes { (p) -> (UInt32, UInt32) in (p[i], p[i+1]) }
+                    let r = Int(_r >> j)
+                    let d = Int(_d << ((bitWidth<<1) - j - bitsField))
+                    let v = r | (d >> (bitWidth-bitsField))
+                    values.append(v)
+                }
+            }
+            return values
+        }
     }
 }
 

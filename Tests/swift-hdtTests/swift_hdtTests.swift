@@ -62,8 +62,8 @@ final class HDTTests: XCTestCase {
     func testHDTDictionarySections() throws {
         let hdt = try p.parse(filename)
 
-        var soCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
-        var pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
+        let soCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
+        let pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
 
         print("============================== TESTING READ OF SHARED SECTION")
         let (shared, sharedLength) = try hdt.readDictionaryPartition(at: 1898, generator: soCounter)

@@ -1,5 +1,7 @@
 import Foundation
 import SPARQLSyntax
+import os.log
+import os.signpost
 
 struct DictionaryMetadata {
     enum DictionaryType {
@@ -26,6 +28,8 @@ public protocol HDTDictionaryProtocol {
 }
 
 public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased {
+    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+
     struct DictionarySectionMetadata {
         var count: Int
         var offset: Int64
@@ -43,7 +47,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased 
     var subjects: DictionarySectionMetadata!
     var predicates: DictionarySectionMetadata!
     var objects: DictionarySectionMetadata!
-    public var cacheMaxSize = 128 * 1024
+    public var cacheMaxSize = 4 * 1024
     
     init(metadata: DictionaryMetadata, state: FileState) throws {
         self.cache = [.subject: [:], .predicate: [:], .object: [:]]
@@ -130,7 +134,9 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased 
     
     private func updateCache(for id: Int64, position: LookupPosition, dictionary: [Int64:Term]) {
         let count = cache[position]!.count
-        if count > cacheMaxSize {
+        if count == cacheMaxSize {
+            os_signpost(.event, log: log, name: "Dictionary", "%{public}s cache reached cache maximum size of %{public}d", "\(position)", count)
+        } else if count > cacheMaxSize {
             if let k = cache[position]!.keys.randomElement() {
                 print("removing cache key: \(k)")
                 cache[position]!.removeValue(forKey: k)
@@ -280,18 +286,16 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased 
                 
                 let chars = ptr.assumingMemoryBound(to: CChar.self)
                 var suffixLength = 0
-                //                print("=======================")
                 for i in 0... {
                     suffixLength += 1
-                    bytes.append(chars[i])
-                    //                    print(">>> suffix byte: \(chars[i]); \(String(format: "%02x (%c)", chars[i], chars[i]))")
                     if chars[i] == 0 {
                         break
                     }
                 }
-                ptr += suffixLength
-                //                warn("-- suffix length: \(suffixLength)")
                 
+                bytes.append(contentsOf: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
+                ptr += suffixLength
+
                 commonPrefix = String(cString: bytes)
                 let status = generateTerm(commonPrefix)
                 switch status {
@@ -337,7 +341,6 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased 
             }
         }
         
-        warn("\(dictionary)")
         return dictionary
     }
     
@@ -401,6 +404,8 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased 
 }
 
 public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol {
+    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+    
     struct DictionarySectionMetadata {
         var count: Int
         var offset: Int64
@@ -417,7 +422,9 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
     var subjects: DictionarySectionMetadata!
     var predicates: DictionarySectionMetadata!
     var objects: DictionarySectionMetadata!
-    public var cacheMaxSize = 128 * 1024
+    public var cacheMaxSize = 4 * 1024
+    var cacheReachedFullState = false
+    
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
     
@@ -498,11 +505,24 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
     }
     
     private func updateCache(for id: Int64, position: LookupPosition, dictionary: [Int64:Term]) {
+        if case .object = position {
+            // TODO: this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
+            //       but there will be lots of churn in O due to the ordering, so we don't attempt to
+            //       cache O values at all.
+            return
+        }
+
         let count = cache[position]!.count
-        if count > cacheMaxSize {
-            if let k = cache[position]!.keys.randomElement() {
-                print("removing cache key: \(k)")
-                cache[position]!.removeValue(forKey: k)
+        if count == cacheMaxSize {
+            if !cacheReachedFullState {
+                os_signpost(.event, log: log, name: "Dictionary", "%{public}s cache reached cache maximum size of %{public}d", "\(position)", count)
+            }
+        } else if count > cacheMaxSize {
+            cacheReachedFullState = true
+            for _ in 0..<32 {
+                if let k = cache[position]!.keys.randomElement() {
+                    cache[position]!.removeValue(forKey: k)
+                }
             }
         }
         
@@ -510,20 +530,37 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
         warn("\(position) cache has \(cache[position]?.count ?? 0) items")
     }
     
+    private func cachedTerm(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) -> Term? {
+        if case .object = position {
+            // TODO: this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
+            //       but there will be lots of churn in O due to the ordering, so we don't attempt to
+            //       cache O values at all.
+            return nil
+        }
+        
+        guard let positionCache = cache[position] else {
+            return nil
+        }
+        guard let term = positionCache[id] else {
+            return nil
+        }
+        return term
+    }
+    
     private func term(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) throws -> Term? {
-        if let positionCache = cache[position], let term = positionCache[id] {
+        if let term = cachedTerm(for: id, from: section, position: position) {
             return term
         } else {
             let dictionary = try probeDictionary(from: mmappedPtr, section: section, for: id)
             updateCache(for: id, position: position, dictionary: dictionary)
             let term = dictionary[id]
-            cache[position]?[id] = term
             return term
         }
     }
     
     private func probeDictionary(from ptr: UnsafeMutableRawPointer, section: DictionarySectionMetadata, for id: Int64) throws -> [Int64: Term] {
-        let generator = AnyIterator(sequence(first: Int64(section.startingID)) { $0 + 1 })
+        
+        var nextID = Int64(section.startingID)
         let bufferBlocks = section.sharedBlocks
         let offset = section.dataOffset
         let size = Int(section.length)
@@ -540,7 +577,8 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
             case keepGoing
         }
         let generateTerm = { (s: String) -> ProbeStatus in
-            let termID = generator.next()!
+            let termID = nextID
+            nextID += 1
             generated += 1
             let newID = termID
             warn("    - TERM: \(newID): \(s)")
@@ -575,17 +613,19 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
         
         let localIDOffset = id - Int64(section.startingID)
         let skipBlocks = Int(localIDOffset/Int64(maximumStringsPerBlock))
-        warn("there are \(blocks.count) blocks")
-        warn("skipping \(skipBlocks) blocks to get to ID \(id) (\(maximumStringsPerBlock) strings per block)")
-        warn("this section has:")
-        warn("    count: \(section.count)")
-        warn("    IDs \(section.startingID)...\(section.startingID+section.count-1)")
-        for _ in blocks.prefix(skipBlocks) {
-            for _ in 0..<maximumStringsPerBlock {
-                _ = generator.next()
-            }
-        }
+//        warn("there are \(blocks.count) blocks")
+//        warn("skipping \(skipBlocks) blocks to get to ID \(id) (\(maximumStringsPerBlock) strings per block)")
+//        warn("this section has:")
+//        warn("    count: \(section.count)")
+//        warn("    IDs \(section.startingID)...\(section.startingID+section.count-1)")
         
+        nextID += Int64(skipBlocks * maximumStringsPerBlock)
+        //        for _ in blocks.prefix(skipBlocks) {
+        //            for _ in 0..<maximumStringsPerBlock {
+        //                _ = generator.next()
+        //            }
+        //        }
+
         //        warn("\(blocks)")
         BLOCK_LOOP: for blockIndex in blocks.dropFirst(skipBlocks).indices {
             //            print("BLOCK >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
@@ -605,7 +645,12 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
             
             //            warn("buffer block at offset \(blockOffset)")
             ptr = readBuffer + blockOffset
-            var commonPrefix = String(cString: ptr.assumingMemoryBound(to: CChar.self))
+            let charsPtr = ptr.assumingMemoryBound(to: CChar.self)
+            var commonPrefix = String(cString: charsPtr)
+            var commonPrefixChars = [CChar]()
+            for i in 0..<commonPrefix.utf8.count {
+                commonPrefixChars.append(charsPtr[i])
+            }
             //            warn("- first string in dictionary block: '\(commonPrefix)'")
             let status = generateTerm(commonPrefix)
             switch status {
@@ -618,41 +663,27 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
             }
             ptr += commonPrefix.utf8.count + 1
             for _ in 1..<maximumStringsPerBlock {
-                //                print("block item ---------------------------")
                 if generated >= count {
-                    //                    warn("******** done 1")
                     break
                 }
                 
                 let sharedPrefixLength = readVByte(&ptr)
-                //                warn("-- shared prefix length: \(sharedPrefixLength)")
-                let prefixData = commonPrefix.data(using: .utf8)!
-                var bytes : [CChar] = prefixData.withUnsafeBytes { (ptr: UnsafePointer<CChar>) in
-                    var bytes = [CChar]()
-                    for i in 0..<Int(sharedPrefixLength) {
-                        if ptr[i] == 0 {
-                            break
-                        }
-                        bytes.append(ptr[i])
-                    }
-                    return bytes
-                }
-                
+                var bytes = commonPrefixChars.prefix(Int(sharedPrefixLength))
                 let chars = ptr.assumingMemoryBound(to: CChar.self)
                 var suffixLength = 0
-                //                print("=======================")
+                
                 for i in 0... {
                     suffixLength += 1
-                    bytes.append(chars[i])
-                    //                    print(">>> suffix byte: \(chars[i]); \(String(format: "%02x (%c)", chars[i], chars[i]))")
                     if chars[i] == 0 {
                         break
                     }
                 }
-                ptr += suffixLength
-                //                warn("-- suffix length: \(suffixLength)")
                 
-                commonPrefix = String(cString: bytes)
+                bytes.append(contentsOf: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
+                ptr += suffixLength
+                
+                commonPrefixChars = Array(bytes)
+                commonPrefix = String(cString: commonPrefixChars)
                 let status = generateTerm(commonPrefix)
                 switch status {
                 case .stop:
@@ -697,7 +728,6 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
             }
         }
         
-        warn("\(dictionary)")
         return dictionary
     }
     
