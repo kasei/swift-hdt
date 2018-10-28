@@ -36,7 +36,7 @@ public class HDT: FileBased {
     }
     
     func term(for id: Int64, position: LookupPosition) -> Term? {
-        fatalError("XXX")
+        fatalError("XXX") // TODO: implement ter(for:position:)
     }
     
     public func triples() throws -> AnyIterator<Triple> {
@@ -311,14 +311,18 @@ public class HDT: FileBased {
                 let sharedPrefixLength = readVByte(&ptr)
                 //                warn("-- shared prefix length: \(sharedPrefixLength)")
                 let prefixData = commonPrefix.data(using: .utf8)!
+                
+                
                 var bytes : [CChar] = prefixData.withUnsafeBytes { (ptr: UnsafePointer<CChar>) in
-                    var bytes = [CChar]()
+                    var count = 0
                     for i in 0..<Int(sharedPrefixLength) {
                         if ptr[i] == 0 {
                             break
                         }
-                        bytes.append(ptr[i])
+                        count += 1
                     }
+                    
+                    let bytes = Array(UnsafeBufferPointer(start: ptr, count: count))
                     return bytes
                 }
                 
@@ -386,6 +390,22 @@ public class MemoryMappedHDT {
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
 
+    private class MemoryMappedHDTTriplesIterator: IteratorProtocol {
+        typealias Element = Triple
+        
+        var hdt: MemoryMappedHDT
+        var triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator
+        
+        init(hdt: MemoryMappedHDT, triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator) {
+            self.hdt = hdt
+            self.triples = triples
+        }
+        
+        func next() -> Triple? {
+            return triples.next()
+        }
+    }
+    
     init(filename: String, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer, header: String, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
         self.filename = filename
         self.size = size
@@ -424,7 +444,8 @@ public class MemoryMappedHDT {
             }
         }
         
-        return AnyIterator(triples.makeIterator())
+        let i = MemoryMappedHDTTriplesIterator(hdt: self, triples: triples.makeIterator())
+        return AnyIterator(i)
     }
     
     func generateTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S) throws -> AnyIterator<(Int64, Int64, Int64)> where S.Element == Int64 {
