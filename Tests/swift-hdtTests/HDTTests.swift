@@ -63,8 +63,7 @@ final class HDTTests: XCTestCase {
             ]
         let triples : AnyIterator<(Int64, Int64, Int64)> = try hdt.readTriples(at: 5159548)
         let gotPrefix = Array(triples.prefix(expectedPrefix.count))
-        for (i, d) in zip(gotPrefix, expectedPrefix).enumerated() {
-            let (g, e) = d
+        for (g, e) in zip(gotPrefix, expectedPrefix) {
             print("got triple: \(g)")
             XCTAssertEqual(g.0, e.0)
             XCTAssertEqual(g.1, e.1)

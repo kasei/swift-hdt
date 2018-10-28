@@ -71,7 +71,7 @@ public class HDTMMapParser {
     public func parse() throws -> MemoryMappedHDT {
         var offset : Int64 = 0
         warn("reading global control information at \(offset)")
-        let (info, ciLength) = try readControlInformation(at: offset)
+        let (_, ciLength) = try readControlInformation(at: offset)
         offset += ciLength
         
         os_signpost(.begin, log: log, name: "Parsing Header", "Begin")
@@ -106,18 +106,18 @@ public class HDTMMapParser {
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
-        warn("dictionary type: \(type) (at offset \(offset))")
+//        warn("dictionary type: \(type) (at offset \(offset))")
         guard type == 2 else {
             throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)
         let _c = ptr.assumingMemoryBound(to: CChar.self)
-        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
+//        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
         
-        let stringCount = Int(readVByte(&ptr)) // numstrings
+        _ = Int(readVByte(&ptr)) // string count
         let bytesCount = Int(readVByte(&ptr))
-        let blockSize = Int(readVByte(&ptr))
+        _ = Int(readVByte(&ptr)) // block size
         
         let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
@@ -129,7 +129,7 @@ public class HDTMMapParser {
         //        warn("dictionary block size: \(blockSize)")
         //        warn("CRC: \(String(format: "%02x\n", Int(crc8)))")
         
-        let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
+        let (_, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
         ptr += Int(blocksLength)
         //        warn("sequence length: \(blocksLength)")
         
@@ -154,32 +154,30 @@ public class HDTMMapParser {
     }
     
     func parseDictionaryTypeFour(at offset: off_t) throws -> (DictionaryMetadata, Int64) {
-        var readBuffer = mmappedPtr
         var offset = offset
         let dictionaryOffset = offset
         
-        warn("reading dictionary: shared at \(offset)")
+//        warn("reading dictionary: shared at \(offset)")
         let sharedOffset = offset
         let sharedLength = try parseDictionaryPartition(at: offset)
         offset += sharedLength
         
-        warn("reading dictionary: subjects at \(offset)")
+//        warn("reading dictionary: subjects at \(offset)")
         let subjectsOffset = offset
         let subjectsLength = try parseDictionaryPartition(at: offset)
         offset += subjectsLength
         
-        warn("reading dictionary: predicates at \(offset)")
+//        warn("reading dictionary: predicates at \(offset)")
         let predicatesOffset = offset
         let predicatesLength = try parseDictionaryPartition(at: offset)
         offset += predicatesLength
         
-        warn("reading dictionary: objects at \(offset)")
+//        warn("reading dictionary: objects at \(offset)")
         let objectsOffset = offset
         let objectsLength = try parseDictionaryPartition(at: offset)
         offset += objectsLength
         
         let currentLength = sharedLength + subjectsLength + predicatesLength + objectsLength
-        let currentPostion = offset + currentLength
         
         let offsets = DictionaryMetadata(
             type: .fourPart,
@@ -194,15 +192,8 @@ public class HDTMMapParser {
     
     func parseDictionary(at offset: off_t) throws -> (DictionaryMetadata, Int64) {
         let (info, ciLength) = try readControlInformation(at: offset)
-        warn("dictionary control information: \(info)")
-        warn("-> next block at \(offset + ciLength)")
-        guard let mappingString = info.properties["mapping"] else {
-            throw HDTError.error("No mapping found in dictionary control information")
-        }
-        guard let mapping = Int(mappingString) else {
-            throw HDTError.error("Invalid mapping found in dictionary control information")
-        }
-        //        warn("Dictionary mapping: \(mapping)")
+//        warn("dictionary control information: \(info)")
+//        warn("-> next block at \(offset + ciLength)")
         
         if info.format == "<http://purl.org/HDT/hdt#dictionaryFour>" {
             let (offsets, dLength) = try parseDictionaryTypeFour(at: offset + ciLength)
@@ -228,7 +219,7 @@ public class HDTMMapParser {
             throw HDTError.error("Invalid header length found in header metadata")
         }
         
-        warn("N-Triples header is \(headerLength) bytes")
+//        warn("N-Triples header is \(headerLength) bytes")
         
         let size = headerLength
         let readBuffer = mmappedPtr + Int(offset) + Int(ciLength)
@@ -250,9 +241,7 @@ public class HDTMMapParser {
     }
     
     func readTriplesBitmap(at offset: off_t) throws -> (BitmapTriplesData, Int64) {
-        var readBuffer = mmappedPtr
-        
-        warn("bitmap triples at \(offset)")
+//        warn("bitmap triples at \(offset)")
         let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
         let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
         let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
@@ -263,24 +252,15 @@ public class HDTMMapParser {
         return (data, length)
     }
     
-    func readTriplesList(at offset: off_t, controlInformation: ControlInformation) throws -> (AnyIterator<(Int64, Int64, Int64)>, Int64) {
-        var readBuffer = mmappedPtr
-        
-        warn("list triples at \(offset)")
-        throw HDTError.error("List triples parsing not implemented")
-    }
-    
     func parseTriples(at offset: off_t) throws -> TriplesMetadata {
-        warn("reading triples at offset \(offset)")
+//        warn("reading triples at offset \(offset)")
         let (info, ciLength) = try readControlInformation(at: offset)
-        warn("triples control information: \(info)")
-        
-        var readBuffer = mmappedPtr
+//        warn("triples control information: \(info)")
         
         guard let order = info.tripleOrdering else {
             throw HDTError.error("Missing or invalid ordering metadata present in triples block")
         }
-        warn("Triple block has ordering \(order)")
+//        warn("Triple block has ordering \(order)")
         
         switch info.format {
         case "<http://purl.org/HDT/hdt#triplesBitmap>":
@@ -346,7 +326,7 @@ public class HDTMMapParser {
         var readBuffer = mmappedPtr
         readBuffer += Int(offset)
 
-        let d = Data(bytes: readBuffer, count: 4)
+        let d = Data(bytes: readBuffer, count: size)
         let expected = "$HDT".data(using: .utf8)
         let cookie = UInt32(bigEndian: readBuffer.assumingMemoryBound(to: UInt32.self).pointee)
         guard d == expected else {

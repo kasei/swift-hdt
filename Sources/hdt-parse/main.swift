@@ -6,7 +6,7 @@ let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 let filename = CommandLine.arguments.dropFirst().first!
 
 do {
-    print("mapping file")
+    warn("mapping file")
     let p = try HDTMMapParser(filename: filename)
     os_signpost(.begin, log: log, name: "Parsing", "Begin")
     let hdt = try p.parse()
@@ -18,7 +18,7 @@ do {
         if i % 10_000 == 0 {
             os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
         }
-        print(t)
+        print(t.subject)
     }
     os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")
 } catch let error {

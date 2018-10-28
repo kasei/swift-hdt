@@ -84,7 +84,6 @@ func readVByte(_ ptr : inout UnsafeMutableRawPointer) -> UInt {
         value += bvalue << shift;
         shift += 7
     } while cont
-    let bytes = ptr.distance(to: p)
     //        warn("read \(bytes) bytes to produce value \(value)")
     ptr = UnsafeMutableRawPointer(p)
     return value
@@ -109,27 +108,27 @@ func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, as
         guard type == assertType else {
             throw HDTError.error("Invalid dictionary LogSequence2 type (\(type)) at offset \(offset)")
         }
-        warn("Sequence type: \(type)")
+//        warn("Sequence type: \(type)")
     } else {
         typeLength = 0
     }
     
     let bits = Int(p[typeLength])
     let bitsLength = 1
-    warn("Sequence bits: \(bits)")
+//    warn("Sequence bits: \(bits)")
     
     var ptr = readBuffer + typeLength + bitsLength
     let entriesCount = Int(readVByte(&ptr))
-    warn("Sequence entries: \(entriesCount)")
+//    warn("Sequence entries: \(entriesCount)")
     
     let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
     ptr += 1
     
     let arraySize = (bits * entriesCount + 7) / 8
-    warn("Array size for log sequence: \(arraySize)")
+//    warn("Array size for log sequence: \(arraySize)")
     let sequenceDataOffset = Int64(readBuffer.distance(to: ptr))
-    warn("Offset for log sequence: \(sequenceDataOffset)")
+//    warn("Offset for log sequence: \(sequenceDataOffset)")
     
     let sequenceData = try readData(from: mmappedPtr, at: offset + sequenceDataOffset, length: arraySize)
     ptr += arraySize
@@ -159,7 +158,7 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     var ptr = readBuffer + typeLength
     let bitCount = Int(readVByte(&ptr))
     let bytes = (bitCount + 7)/8
-    print("reading bitmap data: \(bytes) bytes")
+//    warn("reading bitmap data: \(bytes) bytes")
     
     let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
@@ -199,7 +198,7 @@ func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throw
     case 1:
         let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset, assertType: 1)
         let array = blocks.map { Int64($0) }
-        warn("array prefix: \(array.prefix(32))")
+//        warn("array prefix: \(array.prefix(32))")
         return (array, blocksLength)
     case 2:
         fatalError("TODO: Array read unimplemented: uint32")

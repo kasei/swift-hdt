@@ -66,7 +66,8 @@ public class MemoryMappedHDT {
                     return nil
                 }
                 return Triple(subject: s, predicate: p, object: o)
-            } catch {
+            } catch let error {
+                print(">>> \(error)")
                 return nil
             }
         }
@@ -97,11 +98,10 @@ public class MemoryMappedHDT {
     
     func readTriples(at offset: off_t) throws -> AnyIterator<(Int64, Int64, Int64)> {
         warn("reading triples at offset \(offset)")
-        var readBuffer = mmappedPtr + Int(offset)
         
         switch self.triplesMetadata.format {
         case .bitmap:
-            let (data, length) = try readTriplesBitmap(at: self.triplesMetadata.offset)
+            let (data, _) = try readTriplesBitmap(at: self.triplesMetadata.offset)
             let gen = sequence(first: Int64(1)) { $0 + 1 } // TODO: this isn't right; this data needs to come from the dictionary
             let triples = try generateTriples(data: data, topLevelIDs: gen)
             return triples
@@ -116,6 +116,8 @@ public class MemoryMappedHDT {
         var currentIndex = 0
         var elements = elements
         var array = array
+        var arrayIndex = array.startIndex
+        let endIndex = array.endIndex
         let gen = { () -> (I.Element, E)? in
             repeat {
                 if !data.isEmpty {
@@ -125,12 +127,12 @@ public class MemoryMappedHDT {
                 guard let next = elements.next() else {
                     return nil
                 }
-                guard !array.isEmpty else {
+                guard arrayIndex != endIndex else {
                     return nil
                 }
                 // let k = count the number of elements in $index up to (and including) the next 1
                 var k = 0
-                let max = array.count
+                let max = array.distance(from: arrayIndex, to: endIndex)
                 repeat {
                     k += 1
                     currentIndex += 1
@@ -142,8 +144,10 @@ public class MemoryMappedHDT {
                 //                warn("k=\(k)")
                 //                warn("index set: \(bits)")
                 
-                let pairs = array.prefix(k).map { (next, $0) }
-                array.removeFirst(k)
+                let upto = array.index(arrayIndex, offsetBy: k)
+                let range = arrayIndex..<upto
+                let pairs = array[range].map { (next, $0) }
+                arrayIndex = upto
                 //                warn("+ adding pending results x \(pairs.count)")
                 data.append(contentsOf: pairs)
             } while true
@@ -152,9 +156,7 @@ public class MemoryMappedHDT {
     }
     
     func readTriplesBitmap(at offset: off_t) throws -> (BitmapTriplesData, Int64) {
-        var readBuffer = mmappedPtr + Int(offset)
-        
-        warn("bitmap triples at \(offset)")
+//        warn("bitmap triples at \(offset)")
         let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
         let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
         let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
@@ -168,15 +170,13 @@ public class MemoryMappedHDT {
     func readDictionary(at offset: off_t) throws -> HDTDictionaryProtocol {
         switch dictionaryMetadata.type {
         case .fourPart:
-            warn("using lazy dictionary")
+//            warn("using lazy dictionary")
             let d = try MemoryMappedHDTLazyFourPartDictionary(metadata: dictionaryMetadata, size: size, ptr: mmappedPtr)
 //            let d = try HDTLazyFourPartDictionary(metadata: dictionaryMetadata, state: state)
             //                d.forEach { (pos, id, term) in
             //                    print("term >>> \(pos) \(id) \(term)")
             //                }
             return d
-        default:
-            throw HDTError.error("unimplemented dictionary format type: \(dictionaryMetadata.type)")
         }
     }
 }

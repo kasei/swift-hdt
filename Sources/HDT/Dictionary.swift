@@ -39,7 +39,8 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
         var startingID: Int
         var sharedBlocks: [Int]
     }
-    
+
+    var rdfParser: SerdParser
     var cache: [LookupPosition: [Int64: Term]]
     var metadata: DictionaryMetadata
     var shared: DictionarySectionMetadata!
@@ -57,31 +58,31 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
         self.mmappedPtr = mmappedPtr
         self.size = size
         self.metadata = metadata
-        
-        var readBuffer = mmappedPtr
+        self.rdfParser = SerdParser(syntax: .turtle, base: "http://example.org/", produceUniqueBlankIdentifiers: false)
+
         var offset = metadata.offset
         
-        warn("reading dictionary: shared at \(offset)")
+//        warn("reading dictionary: shared at \(offset)")
         self.shared = try readDictionaryPartition(from: mmappedPtr, at: offset)
         offset += self.shared.length
-        warn("read \(shared.count) shared terms")
+//        warn("read \(shared.count) shared terms")
         
-        warn("offset: \(offset)")
+//        warn("offset: \(offset)")
         
-        warn("reading dictionary: subjects at \(offset)")
+//        warn("reading dictionary: subjects at \(offset)")
         self.subjects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
         offset += self.subjects.length
-        warn("read \(subjects.count) subject terms")
+//        warn("read \(subjects.count) subject terms")
         
-        warn("reading dictionary: predicates at \(offset)")
+//        warn("reading dictionary: predicates at \(offset)")
         self.predicates = try readDictionaryPartition(from: mmappedPtr, at: offset)
         offset += self.predicates.length
-        warn("read \(predicates.count) predicate terms")
+//        warn("read \(predicates.count) predicate terms")
         
-        warn("reading dictionary: objects at \(offset)")
+//        warn("reading dictionary: objects at \(offset)")
         self.objects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
         offset += self.objects.length
-        warn("read \(objects.count) object terms")
+//        warn("read \(objects.count) object terms")
     }
     
     public func forEach(_ body: (LookupPosition, Int64, Term) throws -> Void) rethrows {
@@ -104,38 +105,25 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
     }
     
     public func term(for id: Int64, position: LookupPosition) throws -> Term? {
-        warn("lazy lookup of \(position): \(id)")
         switch position {
         case .subject:
             if id <= shared.count {
-                warn("find term \(id) in shared section")
                 return try term(for: id, from: shared, position: position)
             } else {
-                warn("find term \(id) in subjects section")
                 return try term(for: id, from: subjects, position: position)
             }
         case .predicate:
-            warn("find term \(id) in predicates section")
             return try term(for: id, from: predicates, position: position)
         case .object:
             if id <= shared.count {
-                warn("find term \(id) in shared section")
                 return try term(for: id, from: shared, position: position)
             } else {
-                warn("find term \(id) in objects section")
                 return try term(for: id, from: objects, position: position)
             }
         }
     }
     
     private func updateCache(for id: Int64, position: LookupPosition, dictionary: [Int64:Term]) {
-        if case .object = position {
-            // TODO: this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
-            //       but there will be lots of churn in O due to the ordering, so we don't attempt to
-            //       cache O values at all.
-            return
-        }
-
         let count = cache[position]!.count
         if count == cacheMaxSize {
             if !cacheReachedFullState {
@@ -151,208 +139,110 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
         }
         
         cache[position]?.merge(dictionary, uniquingKeysWith: { (a, b) in a })
-        warn("\(position) cache has \(cache[position]?.count ?? 0) items")
+//        warn("\(position) cache has \(cache[position]?.count ?? 0) items")
     }
     
     private func cachedTerm(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) -> Term? {
-        if case .object = position {
-            // TODO: this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
-            //       but there will be lots of churn in O due to the ordering, so we don't attempt to
-            //       cache O values at all.
-            return nil
-        }
-        
-        guard let positionCache = cache[position] else {
-            return nil
-        }
-        guard let term = positionCache[id] else {
-            return nil
-        }
-        return term
+        let positionCache = cache[position]!
+        return positionCache[id]
     }
     
     private func term(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) throws -> Term? {
-        if let term = cachedTerm(for: id, from: section, position: position) {
+        // TODO: this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
+        //       but there will be lots of churn in O due to the ordering, so we don't attempt to
+        //       cache O values at all.
+        if position != .object, let term = cachedTerm(for: id, from: section, position: position) {
             return term
         } else {
             let dictionary = try probeDictionary(from: mmappedPtr, section: section, for: id)
-            updateCache(for: id, position: position, dictionary: dictionary)
+            if position != .object {
+                updateCache(for: id, position: position, dictionary: dictionary)
+            }
             let term = dictionary[id]
             return term
         }
     }
+
+    private func term(from s: String) throws -> Term {
+        if s.hasPrefix("_") { // blank nodes start _:
+            return Term(value: String(s.dropFirst(2)), type: .blank)
+        } else if s.hasPrefix("\"") {
+            var term: Term? = nil
+            _ = try rdfParser.parse(string: "<s> <p> \(s) .") { (s, p, o) in
+                term = o
+            }
+            guard let t = term else {
+                throw HDTError.error("Failed to parse literal value")
+            }
+            return t
+        } else {
+            return Term(iri: s)
+        }
+    }
     
-    private func probeDictionary(from ptr: UnsafeMutableRawPointer, section: DictionarySectionMetadata, for id: Int64) throws -> [Int64: Term] {
-        
+    private func probeDictionary(from mmappedPtr: UnsafeMutableRawPointer, section: DictionarySectionMetadata, for id: Int64) throws -> [Int64: Term] {
         var nextID = Int64(section.startingID)
-        let bufferBlocks = section.sharedBlocks
         let offset = section.dataOffset
-        let size = Int(section.length)
-        let count = section.count
         let maximumStringsPerBlock = section.blockSize
         
-        var readBuffer = ptr + Int(offset)
+        let readBuffer = mmappedPtr + Int(offset)
 
-        var generated : Int64 = 0
         var dictionary = [Int64: Term]()
-        enum ProbeStatus {
-            case stop
-            case seenID
-            case keepGoing
-        }
-        let generateTerm = { (s: String) -> ProbeStatus in
-            let termID = nextID
-            nextID += 1
-            generated += 1
-            let newID = termID
-            warn("    - TERM: \(newID): \(s)")
-            
-            if s.hasPrefix("_:") {
-                dictionary[newID] = Term(value: String(s.dropFirst(2)), type: .blank)
-            } else if s.hasPrefix("\"") {
-                dictionary[newID] = Term(string: String(s.dropFirst().dropLast()))
-                
-                if s.contains("\"@") {
-                    warn("TODO: handle language literals")
-                } else if s.contains("\"^^") {
-                    warn("TODO: handle datatype literals")
-                }
-            } else {
-                dictionary[newID] = Term(iri: s)
-            }
-            if newID == id {
-                return .seenID
-            } else if newID >= (section.startingID + section.count - 1) {
-                return .stop
-            } else {
-                return .keepGoing
-            }
-        }
         
-        var stop = false
-        
-        
-        var ptr = readBuffer
         let blocks = section.sharedBlocks
         
         let localIDOffset = id - Int64(section.startingID)
         let skipBlocks = Int(localIDOffset/Int64(maximumStringsPerBlock))
-//        warn("there are \(blocks.count) blocks")
-//        warn("skipping \(skipBlocks) blocks to get to ID \(id) (\(maximumStringsPerBlock) strings per block)")
-//        warn("this section has:")
-//        warn("    count: \(section.count)")
-//        warn("    IDs \(section.startingID)...\(section.startingID+section.count-1)")
-        
         nextID += Int64(skipBlocks * maximumStringsPerBlock)
-        //        for _ in blocks.prefix(skipBlocks) {
-        //            for _ in 0..<maximumStringsPerBlock {
-        //                _ = generator.next()
-        //            }
-        //        }
-
-        //        warn("\(blocks)")
-        BLOCK_LOOP: for blockIndex in blocks.dropFirst(skipBlocks).indices {
-            //            print("BLOCK >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-            //        for blockIndex in blocks.indices {
-            let blockOffset = blocks[blockIndex]
-            warn("==> block offset: \(blockOffset)")
-            let ni = blocks.index(after: blockIndex)
-            let next = ni == blocks.endIndex ? nil : blocks[ni]
-            let startingID = generated
+        
+        let blockMaxID = (section.startingID + section.count - 1)
+        let blockIndex = blocks.dropFirst(skipBlocks).startIndex
+        let blockOffset = blocks[blockIndex]
+        var ptr = readBuffer + blockOffset
+        let charsPtr = ptr.assumingMemoryBound(to: CChar.self)
+        
+        var commonPrefix = String(cString: charsPtr)
+        let charsBufferPtr = UnsafeBufferPointer(start: charsPtr, count: commonPrefix.utf8.count)
+        var commonPrefixChars = Array(charsBufferPtr)
+        
+        let t = try self.term(from: commonPrefix)
+        let newID = nextID
+        nextID += 1
+        //            warn("    - TERM: \(newID): \(t)")
+        dictionary[newID] = t
+        if newID == id {
+            return dictionary
+        } else if newID >= blockMaxID {
+            return dictionary
+        }
+        ptr += commonPrefix.utf8.count + 1
+        for _ in 1..<maximumStringsPerBlock {
+            let sharedPrefixLength = readVByte(&ptr)
+            var bytes = commonPrefixChars.prefix(Int(sharedPrefixLength))
+            let chars = ptr.assumingMemoryBound(to: CChar.self)
+            var suffixLength = 0
             
-            let currentOffset = readBuffer.distance(to: ptr)
-            if currentOffset >= size {
-                //                warn("******** done 2")
-                break
-            }
-            
-            
-            //            warn("buffer block at offset \(blockOffset)")
-            ptr = readBuffer + blockOffset
-            let charsPtr = ptr.assumingMemoryBound(to: CChar.self)
-            let ints = UnsafeMutableBufferPointer(start: ptr.assumingMemoryBound(to: UInt8.self), count: 16)
-            print(Array(ints))
-            
-            
-            var commonPrefix = String(cString: charsPtr)
-            var commonPrefixChars = [CChar]()
-            for i in 0..<commonPrefix.utf8.count {
-                commonPrefixChars.append(charsPtr[i])
-            }
-            //            warn("- first string in dictionary block: '\(commonPrefix)'")
-            let status = generateTerm(commonPrefix)
-            switch status {
-            case .stop:
-                break BLOCK_LOOP
-            case .seenID:
-                stop = true
-            default:
-                break
-            }
-            ptr += commonPrefix.utf8.count + 1
-            for _ in 1..<maximumStringsPerBlock {
-                if generated >= count {
+            for i in 0... {
+                suffixLength += 1
+                if chars[i] == 0 {
                     break
                 }
-                
-                let sharedPrefixLength = readVByte(&ptr)
-                var bytes = commonPrefixChars.prefix(Int(sharedPrefixLength))
-                let chars = ptr.assumingMemoryBound(to: CChar.self)
-                var suffixLength = 0
-                
-                for i in 0... {
-                    suffixLength += 1
-                    if chars[i] == 0 {
-                        break
-                    }
-                }
-                
-                bytes.append(contentsOf: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
-                ptr += suffixLength
-                
-                commonPrefixChars = Array(bytes)
-                commonPrefix = String(cString: commonPrefixChars)
-                let status = generateTerm(commonPrefix)
-                switch status {
-                case .stop:
-                    break BLOCK_LOOP
-                case .seenID:
-                    stop = true
-                default:
-                    break
-                }
-                
-                let generatedInBlock = generated - startingID
-                if generatedInBlock >= maximumStringsPerBlock {
-                    break
-                }
-                
-                if let next = next {
-                    let currentOffset = readBuffer.distance(to: ptr)
-                    if currentOffset > next {
-                        print("blocks: \(blocks)")
-                        print("current offset: \(blockOffset)")
-                        print("generated \(generatedInBlock) terms in block")
-                        print("current offset in block \(currentOffset) extends beyond next block offset \(next)")
-                        print("last term string: \(commonPrefix)")
-                        print("char bytes: \(bytes)")
-                        print("shared prefix length: \(sharedPrefixLength)")
-                        print("suffix length: \(suffixLength)")
-                        assert(false)
-                    }
-                    let dist = readBuffer.distance(to: ptr)
-                    if dist > next {
-                        print("A: \(dist) <= \(next)")
-                    }
-                    assert(dist <= next)
-                }
-                if generated > count {
-                    print("B: \(generated) <= \(count)")
-                }
-                assert(generated <= count)
             }
-            if stop {
-                break
+            
+            bytes.append(contentsOf: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
+            ptr += suffixLength
+            
+            commonPrefixChars = Array(bytes)
+            commonPrefix = String(cString: commonPrefixChars)
+            let t = try self.term(from: commonPrefix)
+            let newID = nextID
+            nextID += 1
+            //            warn("    - TERM: \(newID): \(t)")
+            dictionary[newID] = t
+            if newID == id {
+                return dictionary
+            } else if newID >= blockMaxID {
+                return dictionary
             }
         }
         
@@ -360,20 +250,20 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
     }
     
     private func readDictionaryPartition(from ptr: UnsafeMutableRawPointer, at offset: off_t, startingID: Int = 1) throws -> DictionarySectionMetadata {
-        var readBuffer = ptr + Int(offset)
+        let readBuffer = ptr + Int(offset)
         
         // NOTE: HDT docs say this should be a u32, but the code says otherwise
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
-        warn("dictionary type: \(type) (at offset \(offset))")
+//        warn("dictionary type: \(type) (at offset \(offset))")
         guard type == 2 else {
             throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)
         let _c = ptr.assumingMemoryBound(to: CChar.self)
-        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
+//        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
         
         let stringCount = Int(readVByte(&ptr)) // numstrings
         let dataLength = Int64(readVByte(&ptr))
@@ -384,14 +274,14 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
         // TODO: verify CRC
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
-        warn("dictionary entries: \(stringCount)")
-        warn("dictionary byte count: \(dataLength)")
-        warn("dictionary block size: \(blockSize)")
-        warn("CRC: \(String(format: "%02x\n", Int(crc8)))")
+//        warn("dictionary entries: \(stringCount)")
+//        warn("dictionary byte count: \(dataLength)")
+//        warn("dictionary block size: \(blockSize)")
+//        warn("CRC: \(String(format: "%02x\n", Int(crc8)))")
         
         let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
         ptr += Int(blocksLength)
-        warn("sequence length: \(blocksLength)")
+//        warn("sequence length: \(blocksLength)")
         //        warn("sequence data (\(Array(blocks).count) elements): \(Array(blocks))")
         
         let blocksArray = Array(blocks)
