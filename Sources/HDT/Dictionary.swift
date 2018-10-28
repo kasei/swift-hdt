@@ -274,13 +274,15 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol, FileBased 
                 //                warn("-- shared prefix length: \(sharedPrefixLength)")
                 let prefixData = commonPrefix.data(using: .utf8)!
                 var bytes : [CChar] = prefixData.withUnsafeBytes { (ptr: UnsafePointer<CChar>) in
-                    var bytes = [CChar]()
+                    var count = 0
                     for i in 0..<Int(sharedPrefixLength) {
                         if ptr[i] == 0 {
                             break
                         }
-                        bytes.append(ptr[i])
+                        count += 1
                     }
+                    
+                    let bytes = Array(UnsafeBufferPointer(start: ptr, count: count))
                     return bytes
                 }
                 
@@ -646,6 +648,10 @@ public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol
             //            warn("buffer block at offset \(blockOffset)")
             ptr = readBuffer + blockOffset
             let charsPtr = ptr.assumingMemoryBound(to: CChar.self)
+            let ints = UnsafeMutableBufferPointer(start: ptr.assumingMemoryBound(to: UInt8.self), count: 16)
+            print(Array(ints))
+            
+            
             var commonPrefix = String(cString: charsPtr)
             var commonPrefixChars = [CChar]()
             for i in 0..<commonPrefix.utf8.count {

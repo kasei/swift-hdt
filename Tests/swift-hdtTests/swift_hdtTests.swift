@@ -2,7 +2,7 @@ import XCTest
 import SPARQLSyntax
 @testable import HDT
 
-final class HDTTests: XCTestCase {
+final class HDTFileTests: XCTestCase {
     var filename : String!
     var p : HDTFileParser!
     
