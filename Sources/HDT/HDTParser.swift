@@ -233,25 +233,6 @@ public class HDTParser {
     }
     
     
-    struct BitmapTriplesData {
-        var bitmapY : IndexSet
-        var bitmapZ : IndexSet
-        var arrayY : [Int64]
-        var arrayZ : [Int64]
-    }
-    
-    func readTriplesBitmap(at offset: off_t) throws -> (BitmapTriplesData, Int64) {
-//        warn("bitmap triples at \(offset)")
-        let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
-        let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
-        let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
-        let (arrayZ, azLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength + ayLength)
-        
-        let length = byLength + bzLength + ayLength + azLength
-        let data = BitmapTriplesData(bitmapY: bitmapY, bitmapZ: bitmapZ, arrayY: arrayY, arrayZ: arrayZ)
-        return (data, length)
-    }
-    
     func parseTriples(at offset: off_t) throws -> TriplesMetadata {
 //        warn("reading triples at offset \(offset)")
         let (info, ciLength) = try readControlInformation(at: offset)
