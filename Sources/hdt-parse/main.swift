@@ -14,13 +14,18 @@ do {
     os_signpost(.end, log: log, name: "Parsing", "Finished")
 
     os_signpost(.begin, log: log, name: "Enumerating Triples", "Begin")
+
     let triples = try hdt.triples()
+    let ser = NTriplesSerializer()
     for (i, t) in triples.enumerated() {
-        if i % 10_000 == 0 {
+        if i % 25_000 == 0 {
             os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
         }
-        print(t.subject)
+        
+        let d = try ser.serialize([t])
+        print(String(data: d, encoding: .utf8)!, terminator: "")
     }
+
     os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")
 } catch let error {
     print(error)
