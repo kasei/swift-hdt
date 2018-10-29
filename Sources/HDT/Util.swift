@@ -208,3 +208,35 @@ func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throw
         throw HDTError.error("Invalid array type (\(type)) at offset \(offset)")
     }
 }
+
+public struct ConcatenateIterator<I: IteratorProtocol> : IteratorProtocol {
+    public typealias Element = I.Element
+    var iterators: [I]
+    var current: I?
+    
+    public init(_ iterators: I...) {
+        self.iterators = iterators
+        if let first = self.iterators.first {
+            self.current = first
+            self.iterators.remove(at: 0)
+        } else {
+            self.current = nil
+        }
+    }
+
+    public mutating func next() -> I.Element? {
+        repeat {
+            guard current != nil else {
+                return nil
+            }
+            if let item = current!.next() {
+                return item
+            } else if let i = iterators.first {
+                current = i
+                iterators.remove(at: 0)
+            } else {
+                current = nil
+            }
+        } while true
+    }
+}

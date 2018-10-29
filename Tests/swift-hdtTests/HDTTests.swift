@@ -8,7 +8,7 @@ final class HDTTests: XCTestCase {
     var p : HDTParser!
     
     static var allTests = [
-        ("testHDTDictionary", testHDTDictionary),
+        ("testHDTDictionary_i2t", testHDTDictionary_i2t),
         ("testHDTTriplesParse", testHDTTriplesParse),
         ("testHDTParse", testHDTParse),
         ]
@@ -29,7 +29,7 @@ final class HDTTests: XCTestCase {
         //            26_183: Term(integer: 3),
     ]
     
-    func testHDTDictionary() throws {
+    func testHDTDictionary_i2t() throws {
         let hdt = try p.parse()
         
         do {
@@ -49,6 +49,26 @@ final class HDTTests: XCTestCase {
         }
     }
     
+    func testHDTDictionary_t2i() throws {
+        let hdt = try p.parse()
+        
+        do {
+            let offset : Int64 = 1819
+            let termDictionary = try hdt.readDictionary(at: offset)
+            XCTAssertEqual(termDictionary.count, 76881)
+            
+            for (expected, pos, term) in expectedTermTests {
+                guard let id = try termDictionary.id(for: term, position: pos) else {
+                    XCTFail("No ID found for term \(term)")
+                    return
+                }
+                XCTAssertEqual(id, expected)
+            }
+        } catch let error {
+            XCTFail(String(describing: error))
+        }
+    }
+    
     func testHDTTriplesParse() throws {
         let hdt = try p.parse()
         
@@ -61,7 +81,9 @@ final class HDTTests: XCTestCase {
             (2, 104, 13831),
             (2, 111, 75817),
             ]
-        let triples : AnyIterator<(Int64, Int64, Int64)> = try hdt.readTriples(at: 5159548)
+
+        let dictionary = try hdt.readDictionary(at: 1819)
+        let triples : AnyIterator<(Int64, Int64, Int64)> = try hdt.readTriples(at: 5159548, dictionary: dictionary)
         let gotPrefix = Array(triples.prefix(expectedPrefix.count))
         for (g, e) in zip(gotPrefix, expectedPrefix) {
             print("got triple: \(g)")
@@ -96,6 +118,29 @@ final class HDTTests: XCTestCase {
             XCTAssertEqual(t.subject, Term(value: "b1", type: .blank))
             XCTAssertEqual(t.predicate, Term(iri: "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1"))
             XCTAssertEqual(t.object, Term(iri: "http://data.semanticweb.org/person/barry-norton"))
+        } catch let error {
+            XCTFail(String(describing: error))
+        }
+    }
+    
+    func testHDTIdSequence() {
+        let tests : [LookupPosition: Set<Int64>] = [
+            .subject: Set(1...23309),
+            .predicate: Set(1...169),
+            .object: Set(1...23127).union(Set(23311...76711)),
+            ]
+        
+        do {
+            let hdt = try p.parse()
+            let dictionary = try hdt.readDictionary(at: 1819)
+            for (pos, range) in tests {
+                let seq = Array(dictionary.idSequence(for: pos))
+                let expected = range.sorted().map { Int64($0) }
+                if seq != expected {
+                    print("\(pos) got: \(seq.first!)...\(seq.last!)")
+                }
+                XCTAssertEqual(seq, expected, "Expected ID range for \(pos)")
+            }
         } catch let error {
             XCTFail(String(describing: error))
         }

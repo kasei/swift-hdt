@@ -25,6 +25,8 @@ public enum LookupPosition {
 public protocol HDTDictionaryProtocol {
     var count: Int { get }
     func term(for id: Int64, position: LookupPosition) throws -> Term?
+    func id(for term: Term, position: LookupPosition) throws -> Int64?
+    func idSequence(for position: LookupPosition) -> AnySequence<Int64>
 }
 
 public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
@@ -123,6 +125,52 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         }
     }
     
+    public func id(for lookupTerm: Term, position: LookupPosition) throws -> Int64? {
+        switch position {
+        case .subject:
+            for id in idSequence(for: .subject) {
+                let t = try term(for: Int64(id), position: position)
+                if t == lookupTerm {
+                    return Int64(id)
+                }
+            }
+        case .predicate:
+            for id in idSequence(for: .predicate) {
+                let t = try term(for: Int64(id), position: position)
+                if t == lookupTerm {
+                    return Int64(id)
+                }
+            }
+        case .object:
+            for id in idSequence(for: .object) {
+                let t = try term(for: Int64(id), position: position)
+                if t == lookupTerm {
+                    return Int64(id)
+                }
+            }
+        }
+        return nil
+    }
+
+    public func idSequence(for position: LookupPosition) -> AnySequence<Int64> {
+        return AnySequence { () -> AnyIterator<Int64> in
+            switch position {
+            case .subject:
+                let range = Int64(1)..<Int64(self.shared.count + self.subjects.count)
+                return AnyIterator(range.makeIterator())
+            case .predicate:
+                let range = Int64(1)..<Int64(self.predicates.count)
+                return AnyIterator(range.makeIterator())
+            case .object:
+                let range1 = Int64(1)..<Int64(self.shared.count)
+                let min = self.shared.count + self.subjects.count + 1
+                let range2 = Int64(min)..<Int64(min + self.objects.count)
+                let i = ConcatenateIterator(range1.makeIterator(), range2.makeIterator())
+                return AnyIterator(i)
+            }
+        }
+    }
+
     private func updateCache(for id: Int64, position: LookupPosition, dictionary: [Int64:Term]) {
         let count = cache[position]!.count
         if count == cacheMaxSize {
@@ -148,18 +196,23 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     }
     
     private func term(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) throws -> Term? {
-        // TODO: this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
-        //       but there will be lots of churn in O due to the ordering, so we don't attempt to
-        //       cache O values at all.
+        // this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
+        // but there will be lots of churn in O due to the ordering, so we don't attempt to
+        // cache O values at all.
         if position != .object, let term = cachedTerm(for: id, from: section, position: position) {
             return term
         } else {
-            let dictionary = try probeDictionary(from: mmappedPtr, section: section, for: id)
-            if position != .object {
-                updateCache(for: id, position: position, dictionary: dictionary)
+            do {
+                let dictionary = try probeDictionary(from: mmappedPtr, section: section, for: id)
+                if position != .object {
+                    updateCache(for: id, position: position, dictionary: dictionary)
+                }
+                let term = dictionary[id]
+                return term
+            } catch let error {
+                print("\(error)")
+                return nil
             }
-            let term = dictionary[id]
-            return term
         }
     }
 
@@ -298,29 +351,5 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             startingID: startingID,
             sharedBlocks: blocksArray
         )
-    }
-}
-public struct HDTDictionary : HDTDictionaryProtocol {
-    var shared: [Int64: Term]
-    var subjects: [Int64: Term]
-    var predicates: [Int64: Term]
-    var objects: [Int64: Term]
-    
-    public var count: Int {
-        return shared.count + subjects.count + predicates.count + objects.count
-    }
-    
-    public func term(for id: Int64, position: LookupPosition) -> Term? {
-        if case .predicate = position {
-            return predicates[id]
-        } else {
-            if let t = shared[id] {
-                return t
-            } else if let t = subjects[id] {
-                return t
-            } else {
-                return objects[id]
-            }
-        }
     }
 }

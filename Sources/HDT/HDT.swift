@@ -47,13 +47,19 @@ public class HDT {
         munmap(mmappedPtr, size)
     }
     
-    func term(for id: Int64, position: LookupPosition) -> Term? {
-        fatalError("XXX")
+    func term(for id: Int64, position: LookupPosition) throws -> Term? {
+        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        return try dictionary.term(for: id, position: position)
+    }
+    
+    func id(for term: Term, position: LookupPosition) throws -> Int64? {
+        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        return try dictionary.id(for: term, position: position)
     }
     
     public func triples() throws -> AnyIterator<Triple> {
         let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
-        let tripleIDs = try readTriples(at: self.triplesMetadata.offset)
+        let tripleIDs = try readTriples(at: self.triplesMetadata.offset, dictionary: dictionary)
         let triples = tripleIDs.lazy.compactMap { t -> Triple? in
             do {
                 guard let s = try dictionary.term(for: t.0, position: .subject) else {
@@ -96,18 +102,17 @@ public class HDT {
     }
     
     
-    func readTriples(at offset: off_t) throws -> AnyIterator<(Int64, Int64, Int64)> {
+    func readTriples(at offset: off_t, dictionary: HDTDictionaryProtocol) throws -> AnyIterator<(Int64, Int64, Int64)> {
         warn("reading triples at offset \(offset)")
         
         switch self.triplesMetadata.format {
         case .bitmap:
             let (data, _) = try readTriplesBitmap(at: self.triplesMetadata.offset)
-            let gen = sequence(first: Int64(1)) { $0 + 1 } // TODO: this isn't right; this data needs to come from the dictionary
-            let triples = try generateTriples(data: data, topLevelIDs: gen)
+            let ids = dictionary.idSequence(for: .subject) // TODO: this should be based on the first position in the HDT ordering
+            let triples = try generateTriples(data: data, topLevelIDs: ids)
             return triples
         case .list:
-            fatalError()
-            //            return try readTriplesList(at: self.triples.offset, controlInformation: info)
+            fatalError("TODO: Reading list-based triples currently unimplemented")
         }
     }
     
