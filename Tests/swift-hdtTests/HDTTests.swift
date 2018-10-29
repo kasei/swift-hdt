@@ -5,7 +5,7 @@ import SPARQLSyntax
 
 final class HDTTests: XCTestCase {
     var filename : String!
-    var p : HDTMMapParser!
+    var p : HDTParser!
     
     static var allTests = [
         ("testHDTDictionary", testHDTDictionary),
@@ -15,7 +15,7 @@ final class HDTTests: XCTestCase {
     
     override func setUp() {
         self.filename = "/Users/greg/data/datasets/swdf-2012-11-28.hdt"
-        self.p = try! HDTMMapParser(filename: filename)
+        self.p = try! HDTParser(filename: filename)
     }
     
     let expectedTermTests : [(Int64, LookupPosition, Term)] = [

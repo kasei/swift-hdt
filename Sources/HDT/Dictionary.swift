@@ -27,7 +27,7 @@ public protocol HDTDictionaryProtocol {
     func term(for id: Int64, position: LookupPosition) throws -> Term?
 }
 
-public final class MemoryMappedHDTLazyFourPartDictionary : HDTDictionaryProtocol {
+public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
     
     struct DictionarySectionMetadata {

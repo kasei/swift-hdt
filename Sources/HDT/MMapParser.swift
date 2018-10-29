@@ -5,7 +5,7 @@ import CryptoSwift
 import os.log
 import os.signpost
 
-public class HDTMMapParser {
+public class HDTParser {
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
     
     enum ControlType : UInt8 {
@@ -68,7 +68,7 @@ public class HDTMMapParser {
         return try hdt.triples()
     }
     
-    public func parse() throws -> MemoryMappedHDT {
+    public func parse() throws -> HDT {
         var offset : Int64 = 0
         warn("reading global control information at \(offset)")
         let (_, ciLength) = try readControlInformation(at: offset)
@@ -88,7 +88,7 @@ public class HDTMMapParser {
         let triples = try parseTriples(at: offset)
         os_signpost(.end, log: log, name: "Parsing Triples", "Finished")
         
-        return try MemoryMappedHDT(
+        return try HDT(
             filename: filename,
             size: size,
             ptr: mmappedPtr,

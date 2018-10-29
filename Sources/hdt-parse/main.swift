@@ -1,3 +1,5 @@
+import SPARQLSyntax
+import Kineo
 import HDT
 import os.signpost
 import os.log
@@ -6,8 +8,7 @@ let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 let filename = CommandLine.arguments.dropFirst().first!
 
 do {
-    warn("mapping file")
-    let p = try HDTMMapParser(filename: filename)
+    let p = try HDTParser(filename: filename)
     os_signpost(.begin, log: log, name: "Parsing", "Begin")
     let hdt = try p.parse()
     os_signpost(.end, log: log, name: "Parsing", "Finished")
@@ -24,20 +25,3 @@ do {
 } catch let error {
     print(error)
 }
-
-//do {
-//    print("parsing file")
-//    let p = HDTFileParser()
-//    os_signpost(.begin, log: log, name: "Parsing", "Begin")
-//    let hdt = try p.parse(filename)
-//    os_signpost(.end, log: log, name: "Parsing", "Finished")
-//
-//    os_signpost(.begin, log: log, name: "Enumerating Triples", "Begin")
-//    let triples = try hdt.triples()
-//    for t in triples {
-//        print(t)
-//    }
-//    os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")
-//} catch let error {
-//    print(error)
-//}

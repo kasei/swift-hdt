@@ -6,7 +6,7 @@ public enum HDTError: Error {
     case error(String)
 }
 
-public class MemoryMappedHDT {
+public class HDT {
     var filename: String
     var header: String
     var triplesMetadata: TriplesMetadata
@@ -17,13 +17,13 @@ public class MemoryMappedHDT {
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
 
-    private class MemoryMappedHDTTriplesIterator: IteratorProtocol {
+    private class HDTTriplesIterator: IteratorProtocol {
         typealias Element = Triple
         
-        var hdt: MemoryMappedHDT
+        var hdt: HDT
         var triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator
         
-        init(hdt: MemoryMappedHDT, triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator) {
+        init(hdt: HDT, triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator) {
             self.hdt = hdt
             self.triples = triples
         }
@@ -72,7 +72,7 @@ public class MemoryMappedHDT {
             }
         }
         
-        let i = MemoryMappedHDTTriplesIterator(hdt: self, triples: triples.makeIterator())
+        let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
         return AnyIterator(i)
     }
     
@@ -170,12 +170,7 @@ public class MemoryMappedHDT {
     func readDictionary(at offset: off_t) throws -> HDTDictionaryProtocol {
         switch dictionaryMetadata.type {
         case .fourPart:
-//            warn("using lazy dictionary")
-            let d = try MemoryMappedHDTLazyFourPartDictionary(metadata: dictionaryMetadata, size: size, ptr: mmappedPtr)
-//            let d = try HDTLazyFourPartDictionary(metadata: dictionaryMetadata, state: state)
-            //                d.forEach { (pos, id, term) in
-            //                    print("term >>> \(pos) \(id) \(term)")
-            //                }
+            let d = try HDTLazyFourPartDictionary(metadata: dictionaryMetadata, size: size, ptr: mmappedPtr)
             return d
         }
     }
