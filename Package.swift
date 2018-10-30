@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
 		.package(url: "https://github.com/kasei/swift-sparql-syntax.git", .upToNextMinor(from: "0.0.83")),
 		.package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", from: "0.8.0"),
-        .package(url: "https://github.com/kasei/kineo.git", .upToNextMinor(from: "0.0.35")),
+        .package(url: "https://github.com/kasei/kineo.git", .upToNextMinor(from: "0.0.37")),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.

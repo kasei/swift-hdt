@@ -64,27 +64,17 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
 
         var offset = metadata.offset
         
-//        warn("reading dictionary: shared at \(offset)")
         self.shared = try readDictionaryPartition(from: mmappedPtr, at: offset)
         offset += self.shared.length
-//        warn("read \(shared.count) shared terms")
         
-//        warn("offset: \(offset)")
-        
-//        warn("reading dictionary: subjects at \(offset)")
         self.subjects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
         offset += self.subjects.length
-//        warn("read \(subjects.count) subject terms")
-        
-//        warn("reading dictionary: predicates at \(offset)")
+
         self.predicates = try readDictionaryPartition(from: mmappedPtr, at: offset)
         offset += self.predicates.length
-//        warn("read \(predicates.count) predicate terms")
-        
-//        warn("reading dictionary: objects at \(offset)")
+
         self.objects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
         offset += self.objects.length
-//        warn("read \(objects.count) object terms")
     }
     
     public func forEach(_ body: (LookupPosition, Int64, Term) throws -> Void) rethrows {
@@ -187,7 +177,6 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         }
         
         cache[position]?.merge(dictionary, uniquingKeysWith: { (a, b) in a })
-//        warn("\(position) cache has \(cache[position]?.count ?? 0) items")
     }
     
     private func cachedTerm(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) -> Term? {
@@ -309,15 +298,13 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
-//        warn("dictionary type: \(type) (at offset \(offset))")
         guard type == 2 else {
             throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)
         let _c = ptr.assumingMemoryBound(to: CChar.self)
-//        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
-        
+
         let stringCount = Int(readVByte(&ptr)) // numstrings
         let dataLength = Int64(readVByte(&ptr))
         let blockSize = Int(readVByte(&ptr))
@@ -327,15 +314,9 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         // TODO: verify CRC
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
-//        warn("dictionary entries: \(stringCount)")
-//        warn("dictionary byte count: \(dataLength)")
-//        warn("dictionary block size: \(blockSize)")
-//        warn("CRC: \(String(format: "%02x\n", Int(crc8)))")
         
         let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
         ptr += Int(blocksLength)
-//        warn("sequence length: \(blocksLength)")
-        //        warn("sequence data (\(Array(blocks).count) elements): \(Array(blocks))")
         
         let blocksArray = Array(blocks)
         let dataBlockPosition = offset + dictionaryHeaderLength + blocksLength
@@ -349,7 +330,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             length: length,
             blockSize: blockSize,
             startingID: startingID,
-            sharedBlocks: blocksArray
+            sharedBlocks: blocksArray.lazy.map { Int($0) }
         )
     }
 }

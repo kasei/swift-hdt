@@ -70,7 +70,6 @@ public class HDTParser {
     
     public func parse() throws -> HDT {
         var offset : Int64 = 0
-        warn("reading global control information at \(offset)")
         let (_, ciLength) = try readControlInformation(at: offset)
         offset += ciLength
         
@@ -106,14 +105,12 @@ public class HDTParser {
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
-//        warn("dictionary type: \(type) (at offset \(offset))")
         guard type == 2 else {
             throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)
         let _c = ptr.assumingMemoryBound(to: CChar.self)
-//        warn(String(format: "reading dictionary partition at offset \(offset); starting bytes: %02x %02x %02x %02x %02x", _c[0], _c[1], _c[2], _c[3], _c[4]))
         
         _ = Int(readVByte(&ptr)) // string count
         let bytesCount = Int(readVByte(&ptr))
@@ -124,23 +121,11 @@ public class HDTParser {
         // TODO: verify CRC
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
-        //        warn("dictionary entries: \(stringCount)")
-        //        warn("dictionary byte count: \(bytesCount)")
-        //        warn("dictionary block size: \(blockSize)")
-        //        warn("CRC: \(String(format: "%02x\n", Int(crc8)))")
         
         let (_, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
         ptr += Int(blocksLength)
-        //        warn("sequence length: \(blocksLength)")
-        
-        //        let blocksArray = Array(blocks)
-        //        let dataBlockPosition = offset + dictionaryHeaderLength + blocksLength
+
         let dataLength = Int64(bytesCount)
-        
-        //        warn(dataLength)
-        //        warn(bytesCount)
-        //        warn("====")
-        
         ptr += Int(dataLength)
         
         
@@ -157,22 +142,18 @@ public class HDTParser {
         var offset = offset
         let dictionaryOffset = offset
         
-//        warn("reading dictionary: shared at \(offset)")
         let sharedOffset = offset
         let sharedLength = try parseDictionaryPartition(at: offset)
         offset += sharedLength
         
-//        warn("reading dictionary: subjects at \(offset)")
         let subjectsOffset = offset
         let subjectsLength = try parseDictionaryPartition(at: offset)
         offset += subjectsLength
         
-//        warn("reading dictionary: predicates at \(offset)")
         let predicatesOffset = offset
         let predicatesLength = try parseDictionaryPartition(at: offset)
         offset += predicatesLength
         
-//        warn("reading dictionary: objects at \(offset)")
         let objectsOffset = offset
         let objectsLength = try parseDictionaryPartition(at: offset)
         offset += objectsLength
@@ -192,8 +173,6 @@ public class HDTParser {
     
     func parseDictionary(at offset: off_t) throws -> (DictionaryMetadata, Int64) {
         let (info, ciLength) = try readControlInformation(at: offset)
-//        warn("dictionary control information: \(info)")
-//        warn("-> next block at \(offset + ciLength)")
         
         if info.format == "<http://purl.org/HDT/hdt#dictionaryFour>" {
             let (offsets, dLength) = try parseDictionaryTypeFour(at: offset + ciLength)
@@ -205,7 +184,6 @@ public class HDTParser {
     
     func readHeader(at offset: off_t) throws -> (String, Int64) {
         let (info, ciLength) = try readControlInformation(at: offset)
-        //        warn("header control information: \(info)")
         
         guard info.format == "ntriples" else {
             throw HDTError.error("Header metadata format must be ntriples, but found '\(info.format)'")
@@ -218,8 +196,6 @@ public class HDTParser {
         guard let headerLength = Int(headerLengthString) else {
             throw HDTError.error("Invalid header length found in header metadata")
         }
-        
-//        warn("N-Triples header is \(headerLength) bytes")
         
         let size = headerLength
         let readBuffer = mmappedPtr + Int(offset) + Int(ciLength)
@@ -234,14 +210,11 @@ public class HDTParser {
     
     
     func parseTriples(at offset: off_t) throws -> TriplesMetadata {
-//        warn("reading triples at offset \(offset)")
         let (info, ciLength) = try readControlInformation(at: offset)
-//        warn("triples control information: \(info)")
         
         guard let order = info.tripleOrdering else {
             throw HDTError.error("Missing or invalid ordering metadata present in triples block")
         }
-//        warn("Triple block has ordering \(order)")
         
         switch info.format {
         case "<http://purl.org/HDT/hdt#triplesBitmap>":
@@ -266,11 +239,9 @@ public class HDTParser {
         guard let c = ControlType(rawValue: cValue) else {
             throw HDTError.error("Unexpected value for Control Type: \(cValue) at offset \(offset)")
         }
-        //        warn("Found control byte: \(c)")
         
         let fValue = (readBuffer + cookieLength + cLength).assumingMemoryBound(to: CChar.self)
         let format = String(cString: fValue)
-        //        warn("Found format: \(format)")
         
         let fLength = format.utf8.count + 1
         
@@ -283,7 +254,6 @@ public class HDTParser {
                 return (String(a[0]), String(a[1]))
             }
             properties = Dictionary(uniqueKeysWithValues: pairs)
-            //            warn("Found properties: \(properties)")
         }
         
         let pLength = propertiesString.utf8.count + 1
@@ -313,6 +283,5 @@ public class HDTParser {
         guard d == expected else {
             throw HDTError.error("Bad HDT cookie at offset \(offset): \(String(format: "0x%08x", cookie))")
         }
-        //        warn("Found HDT cookie at offset \(offset)")
     }
 }

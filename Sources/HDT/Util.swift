@@ -21,11 +21,11 @@ extension Data {
         }
     }
 
-    public func getFields(width bitsField: Int, count: Int) -> AnySequence<Int> {
+    public func getFields(width bitsField: Int, count: Int) -> AnySequence<Int64> {
         let type = UInt32.self
         let bitWidth = type.bitWidth
         
-        return AnySequence { () -> AnyIterator<Int> in
+        return AnySequence { () -> AnyIterator<Int64> in
             var index = 0
             return AnyIterator {
                 guard index < count else {
@@ -38,15 +38,16 @@ extension Data {
                 if (j+bitsField) <= bitWidth {
                     let d : UInt32 = self.withUnsafeBytes { $0[i] }
                     let v = Int((d << (bitWidth-j-bitsField)) >> (bitWidth-bitsField))
-                    return v
+                    return Int64(v)
                 } else {
-                    return self.withUnsafeBytes { (p : UnsafePointer<UInt32>) -> Int in
+                    let v = self.withUnsafeBytes { (p : UnsafePointer<UInt32>) -> Int in
                         let _r = p[i]
                         let _d = p[i+1]
                         let r = Int(_r >> j)
                         let d = Int(_d << ((bitWidth<<1) - j - bitsField))
                         return r | (d >> (bitWidth-bitsField))
                     }
+                    return Int64(v)
                 }
             }
         }
@@ -79,12 +80,10 @@ func readVByte(_ ptr : inout UnsafeMutableRawPointer) -> UInt {
         let b = p[0]
         let bvalue = UInt(b & 0x7f)
         cont = ((b & 0x80) == 0)
-        //            warn("vbyte: \(String(format: "0x%02x", b)), byte value=\(bvalue), continue=\(cont)")
         p += 1
         value += bvalue << shift;
         shift += 7
     } while cont
-    //        warn("read \(bytes) bytes to produce value \(value)")
     ptr = UnsafeMutableRawPointer(p)
     return value
 }
@@ -96,7 +95,7 @@ func readData(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, length
     return data
 }
 
-func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, assertType: UInt8? = nil) throws -> (AnySequence<Int>, Int64) {
+func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, assertType: UInt8? = nil) throws -> (AnySequence<Int64>, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
     
@@ -108,27 +107,22 @@ func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, as
         guard type == assertType else {
             throw HDTError.error("Invalid dictionary LogSequence2 type (\(type)) at offset \(offset)")
         }
-//        warn("Sequence type: \(type)")
     } else {
         typeLength = 0
     }
     
     let bits = Int(p[typeLength])
     let bitsLength = 1
-//    warn("Sequence bits: \(bits)")
     
     var ptr = readBuffer + typeLength + bitsLength
     let entriesCount = Int(readVByte(&ptr))
-//    warn("Sequence entries: \(entriesCount)")
     
     let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
     ptr += 1
     
     let arraySize = (bits * entriesCount + 7) / 8
-//    warn("Array size for log sequence: \(arraySize)")
     let sequenceDataOffset = Int64(readBuffer.distance(to: ptr))
-//    warn("Offset for log sequence: \(sequenceDataOffset)")
     
     let sequenceData = try readData(from: mmappedPtr, at: offset + sequenceDataOffset, length: arraySize)
     ptr += arraySize
@@ -144,7 +138,7 @@ func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, as
     return (seq, length)
 }
 
-func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (IndexSet, Int64) {
+func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (BlockIterator<AnyIterator<[Int]>, Int>, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
 
@@ -158,25 +152,39 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     var ptr = readBuffer + typeLength
     let bitCount = Int(readVByte(&ptr))
     let bytes = (bitCount + 7)/8
-//    warn("reading bitmap data: \(bytes) bytes")
     
     let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
     ptr += 1
     
     let data = Data(bytes: ptr, count: bytes)
-    var i = IndexSet()
-    for (shift, b) in data.enumerated() {
-        let add = shift*8
-        if (b & 0x01) > 0 { i.insert(0 + add) }
-        if (b & 0x02) > 0 { i.insert(1 + add) }
-        if (b & 0x04) > 0 { i.insert(2 + add) }
-        if (b & 0x08) > 0 { i.insert(3 + add) }
-        if (b & 0x10) > 0 { i.insert(4 + add) }
-        if (b & 0x20) > 0 { i.insert(5 + add) }
-        if (b & 0x40) > 0 { i.insert(6 + add) }
-        if (b & 0x80) > 0 { i.insert(7 + add) }
+
+    var shift = 0
+    let seq = AnySequence { () -> AnyIterator<[Int]> in
+        let base = AnyIterator { () -> [Int]? in
+            var block = [Int]()
+            for _ in 0..<16 {
+                guard shift < data.count else {
+                    return nil
+                }
+                let b = data[shift]
+                let add = shift*8
+                if (b & 0x01) > 0 { block.append(0 + add) }
+                if (b & 0x02) > 0 { block.append(1 + add) }
+                if (b & 0x04) > 0 { block.append(2 + add) }
+                if (b & 0x08) > 0 { block.append(3 + add) }
+                if (b & 0x10) > 0 { block.append(4 + add) }
+                if (b & 0x20) > 0 { block.append(5 + add) }
+                if (b & 0x40) > 0 { block.append(6 + add) }
+                if (b & 0x80) > 0 { block.append(7 + add) }
+    //            print("\(offset): [\(shift)]: \(block)")
+                shift += 1
+            }
+            return block
+        }
+        return base
     }
+    
     ptr += bytes
     
     let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
@@ -184,10 +192,12 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     ptr += 4
     
     let length = Int64(readBuffer.distance(to: ptr))
+    
+    let i : BlockIterator<AnyIterator<[Int]>, Int> = BlockIterator(seq.makeIterator())
     return (i, length)
 }
 
-func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> ([Int64], Int64) {
+func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (AnySequence<Int64>, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
 
@@ -197,9 +207,7 @@ func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throw
     switch type {
     case 1:
         let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset, assertType: 1)
-        let array = blocks.map { Int64($0) }
-//        warn("array prefix: \(array.prefix(32))")
-        return (array, blocksLength)
+        return (blocks, blocksLength)
     case 2:
         fatalError("TODO: Array read unimplemented: uint32")
     case 3:
@@ -223,7 +231,7 @@ public struct ConcatenateIterator<I: IteratorProtocol> : IteratorProtocol {
             self.current = nil
         }
     }
-
+    
     public mutating func next() -> I.Element? {
         repeat {
             guard current != nil else {
@@ -238,5 +246,78 @@ public struct ConcatenateIterator<I: IteratorProtocol> : IteratorProtocol {
                 current = nil
             }
         } while true
+    }
+}
+
+public struct BlockIterator<I : IteratorProtocol, K>: IteratorProtocol where I.Element == [K] {
+    var base: I
+    var open: Bool
+    var buffer: [K]
+    var index: Int
+    public init(_ base: I) {
+        self.open = true
+        self.base = base
+        self.buffer = []
+        self.index = buffer.endIndex
+    }
+
+    public mutating func next() -> K? {
+        guard self.open else {
+            return nil
+        }
+        
+        repeat {
+            if index != buffer.endIndex {
+                let item = buffer[index]
+                index = buffer.index(after: index)
+                return item
+            }
+
+            guard let newBuffer = base.next() else {
+                open = false
+                return nil
+            }
+
+            buffer = newBuffer
+            index = buffer.startIndex
+        } while true
+    }
+
+}
+
+struct PeekableIterator<T: IteratorProtocol> : IteratorProtocol {
+    public typealias Element = T.Element
+    private var generator: T
+    private var bufferedElement: Element?
+    public  init(generator: T) {
+        self.generator = generator
+        bufferedElement = self.generator.next()
+    }
+    
+    public mutating func next() -> Element? {
+        let r = bufferedElement
+        bufferedElement = generator.next()
+        return r
+    }
+    
+    public func peek() -> Element? {
+        return bufferedElement
+    }
+    
+    mutating func dropWhile(filter: (Element) -> Bool) {
+        while bufferedElement != nil {
+            if !filter(bufferedElement!) {
+                break
+            }
+            _ = next()
+        }
+    }
+    
+    mutating public func elements() -> [Element] {
+        var elements = [Element]()
+        while let e = next() {
+            elements.append(e)
+        }
+        return elements
     }
 }

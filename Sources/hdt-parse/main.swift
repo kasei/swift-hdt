@@ -1,4 +1,5 @@
 import SPARQLSyntax
+import Foundation
 import Kineo
 import HDT
 import os.signpost
@@ -6,6 +7,15 @@ import os.log
 
 let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 let filename = CommandLine.arguments.dropFirst().first!
+
+struct StdoutOutputStream: TextOutputStream {
+    public init() {}
+    public func write(_ string: String) {
+        print(string, terminator: "")
+    }
+}
+
+var stdout = StdoutOutputStream()
 
 do {
     let p = try HDTParser(filename: filename)
@@ -22,8 +32,7 @@ do {
             os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
         }
         
-        let d = try ser.serialize([t])
-        print(String(data: d, encoding: .utf8)!, terminator: "")
+        try ser.serialize([t], to: &stdout)
     }
 
     os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")

@@ -91,6 +91,7 @@ final class HDTTests: XCTestCase {
             XCTAssertEqual(g.1, e.1)
             XCTAssertEqual(g.2, e.2)
         }
+        XCTAssertTrue("\(hdt)".count > 0) // keep a strong reference to hdt
     }
     
     func testHDTTriples() throws {

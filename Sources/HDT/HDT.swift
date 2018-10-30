@@ -87,8 +87,10 @@ public class HDT {
         
         switch order {
         case .spo:
-            let pairs = generatePairs(elements: gen.makeIterator(), index: data.bitmapY, array: data.arrayY)
-            let triplets = generatePairs(elements: pairs, index: data.bitmapZ, array: data.arrayZ)
+            let y = data.arrayY.makeIterator()
+            let z = data.arrayZ.makeIterator()
+            let pairs = generatePairs(elements: gen.makeIterator(), index: data.bitmapY, array: y)
+            let triplets = generatePairs(elements: pairs, index: data.bitmapZ, array: z)
             let triples = triplets.lazy.map {
                 ($0.0.0, $0.0.1, $0.1)
             }
@@ -103,8 +105,6 @@ public class HDT {
     
     
     func readTriples(at offset: off_t, dictionary: HDTDictionaryProtocol) throws -> AnyIterator<(Int64, Int64, Int64)> {
-        warn("reading triples at offset \(offset)")
-        
         switch self.triplesMetadata.format {
         case .bitmap:
             let (data, _) = try readTriplesBitmap(at: self.triplesMetadata.offset)
@@ -116,52 +116,49 @@ public class HDT {
         }
     }
     
-    func generatePairs<I: IteratorProtocol, E>(elements: I, index bits: IndexSet, array: [E]) -> AnyIterator<(I.Element, E)> {
-        var data = [(I.Element, E)]()
+    func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol>(elements: I, index _bits: J, array array: C) -> AnyIterator<(I.Element, C.Element)> where J.Element == Int {
+        var bits = PeekableIterator(generator: _bits)
         var currentIndex = 0
         var elements = elements
-        var array = array
-        var arrayIndex = array.startIndex
-        let endIndex = array.endIndex
-        let gen = { () -> (I.Element, E)? in
+        var arrayIterator = array
+
+        var buffer = [(I.Element, C.Element)]()
+        let gen = { () -> (I.Element, C.Element)? in
             repeat {
-                if !data.isEmpty {
-                    //                    warn("- removing element from pending array of size \(data.count)")
-                    return data.remove(at: 0)
+                if !buffer.isEmpty {
+                    return buffer.remove(at: 0)
                 }
                 guard let next = elements.next() else {
                     return nil
                 }
-                guard arrayIndex != endIndex else {
-                    return nil
-                }
+                
                 // let k = count the number of elements in $index up to (and including) the next 1
                 var k = 0
-                let max = array.distance(from: arrayIndex, to: endIndex)
                 repeat {
                     k += 1
                     currentIndex += 1
-                    if k >= max {
+                    
+                    if let next = bits.peek() {
+                        if next == (currentIndex - 1) {
+                            _ = bits.next()
+                            break
+                        }
+                    } else {
                         break
                     }
-                } while !bits.contains(currentIndex-1)
-                
-                //                warn("k=\(k)")
-                //                warn("index set: \(bits)")
-                
-                let upto = array.index(arrayIndex, offsetBy: k)
-                let range = arrayIndex..<upto
-                let pairs = array[range].map { (next, $0) }
-                arrayIndex = upto
-                //                warn("+ adding pending results x \(pairs.count)")
-                data.append(contentsOf: pairs)
+                } while true
+
+                for _ in 0..<k {
+                    if let item = arrayIterator.next() {
+                        buffer.append((next, item))
+                    }
+                }
             } while true
         }
         return AnyIterator(gen)
     }
     
     func readTriplesBitmap(at offset: off_t) throws -> (BitmapTriplesData, Int64) {
-//        warn("bitmap triples at \(offset)")
         let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
         let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
         let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)

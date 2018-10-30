@@ -1,10 +1,10 @@
 import Foundation
 
 struct BitmapTriplesData {
-    var bitmapY : IndexSet
-    var bitmapZ : IndexSet
-    var arrayY : [Int64]
-    var arrayZ : [Int64]
+    var bitmapY : BlockIterator<AnyIterator<[Int]>, Int>
+    var bitmapZ : BlockIterator<AnyIterator<[Int]>, Int>
+    var arrayY : AnySequence<Int64>
+    var arrayZ : AnySequence<Int64>
 }
 
 
