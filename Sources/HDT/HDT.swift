@@ -126,7 +126,7 @@ public class HDT {
         }
     }
     
-    func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol>(elements: I, index _bits: J, array array: C) -> AnyIterator<(I.Element, C.Element)> where J.Element == Int {
+    func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol>(elements: I, index _bits: J, array: C) -> AnyIterator<(I.Element, C.Element)> where J.Element == Int {
         var bits = PeekableIterator(generator: _bits)
         var currentIndex = 0
         var elements = elements

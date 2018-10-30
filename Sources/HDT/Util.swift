@@ -60,7 +60,7 @@ struct StderrOutputStream: TextOutputStream {
     public func write(_ string: String) {fputs(string, stderr)}
 }
 var errStream = StderrOutputStream.stream
-public func warn(_ item: Any) {
+func warn(_ item: Any) {
     if false {
         print(item, to: &errStream)
     }

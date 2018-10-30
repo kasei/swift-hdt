@@ -22,6 +22,11 @@ public enum LookupPosition {
     case object
 }
 
+struct TermLookupPair: Hashable {
+    var position: LookupPosition
+    var id: Int64
+}
+
 public protocol HDTDictionaryProtocol {
     var count: Int { get }
     func term(for id: Int64, position: LookupPosition) throws -> Term?
@@ -43,20 +48,20 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     }
 
     var rdfParser: SerdParser
-    var cache: [LookupPosition: [Int64: Term]]
+    var cache: [TermLookupPair: Term]
     var metadata: DictionaryMetadata
     var shared: DictionarySectionMetadata!
     var subjects: DictionarySectionMetadata!
     var predicates: DictionarySectionMetadata!
     var objects: DictionarySectionMetadata!
-    public var cacheMaxItemsPerPosition = 8 * 1024
+    public var cacheMaxItems = 2 * 1024
     var cacheReachedFullState = false
     
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
     
     init(metadata: DictionaryMetadata, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer) throws {
-        self.cache = [.subject: [:], .predicate: [:], .object: [:]]
+        self.cache = [:]
         self.mmappedPtr = mmappedPtr
         self.size = size
         self.metadata = metadata
@@ -161,40 +166,43 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         }
     }
 
-    private func updateCache(for id: Int64, position: LookupPosition, dictionary: [Int64:Term]) {
-        let count = cache[position]!.count
-        if count == cacheMaxItemsPerPosition {
+    private func updateCache(for lookup: TermLookupPair, dictionary: [Int64:Term]) {
+        let count = cache.count
+        if count == cacheMaxItems {
             if !cacheReachedFullState {
-                os_signpost(.event, log: log, name: "Dictionary", "%{public}s cache reached cache maximum size of %{public}d", "\(position)", count)
+                os_signpost(.event, log: log, name: "Dictionary", "%{public}s cache reached cache maximum size of %{public}d", "\(lookup.position)", count)
             }
-        } else if count > cacheMaxItemsPerPosition {
+        } else if count > cacheMaxItems {
             cacheReachedFullState = true
             for _ in 0..<32 {
-                if let k = cache[position]!.keys.randomElement() {
-                    cache[position]!.removeValue(forKey: k)
+                if let k = cache.keys.randomElement() {
+                    cache.removeValue(forKey: k)
                 }
             }
         }
         
-        cache[position]?.merge(dictionary, uniquingKeysWith: { (a, b) in a })
+        for (id, v) in dictionary {
+            let l = TermLookupPair(position: lookup.position, id: id)
+            cache[l] = v
+        }
     }
     
-    private func cachedTerm(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) -> Term? {
-        let positionCache = cache[position]!
-        return positionCache[id]
+    private func cachedTerm(for lookup: TermLookupPair, from section: DictionarySectionMetadata) -> Term? {
+        return cache[lookup]
     }
     
     private func term(for id: Int64, from section: DictionarySectionMetadata, position: LookupPosition) throws -> Term? {
         // this is a heuristic for SPO-ordered HDT files; S and P will benefit from caching,
         // but there will be lots of churn in O due to the ordering, so we don't attempt to
         // cache O values at all.
-        if position != .object, let term = cachedTerm(for: id, from: section, position: position) {
+        let l = TermLookupPair(position: position, id: id)
+        if position != .object, let term = cachedTerm(for: l, from: section) {
             return term
         } else {
             do {
                 let dictionary = try probeDictionary(from: mmappedPtr, section: section, for: id)
                 if position != .object {
-                    updateCache(for: id, position: position, dictionary: dictionary)
+                    updateCache(for: l, dictionary: dictionary)
                 }
                 let term = dictionary[id]
                 return term
@@ -260,7 +268,6 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         ptr += commonPrefix.utf8.count + 1
         for _ in 1..<maximumStringsPerBlock {
             let sharedPrefixLength = readVByte(&ptr)
-            var bytes = commonPrefixChars.prefix(Int(sharedPrefixLength))
             let chars = ptr.assumingMemoryBound(to: CChar.self)
             var suffixLength = 0
             
@@ -271,10 +278,9 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
                 }
             }
             
-            bytes.append(contentsOf: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
             ptr += suffixLength
             
-            commonPrefixChars = Array(bytes)
+            commonPrefixChars.replaceSubrange(Int(sharedPrefixLength)..., with: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
             commonPrefix = String(cString: commonPrefixChars)
             let t = try self.term(from: commonPrefix)
             let newID = nextID
@@ -303,8 +309,6 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         }
         
         var ptr = readBuffer + Int(typeLength)
-        let _c = ptr.assumingMemoryBound(to: CChar.self)
-
         let stringCount = Int(readVByte(&ptr)) // numstrings
         let dataLength = Int64(readVByte(&ptr))
         let blockSize = Int(readVByte(&ptr))

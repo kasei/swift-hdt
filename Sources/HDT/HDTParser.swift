@@ -110,8 +110,6 @@ public class HDTParser {
         }
         
         var ptr = readBuffer + Int(typeLength)
-        let _c = ptr.assumingMemoryBound(to: CChar.self)
-        
         _ = Int(readVByte(&ptr)) // string count
         let bytesCount = Int(readVByte(&ptr))
         _ = Int(readVByte(&ptr)) // block size

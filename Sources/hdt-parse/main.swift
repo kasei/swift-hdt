@@ -18,7 +18,7 @@ struct StdoutOutputStream: TextOutputStream {
 var stdout = StdoutOutputStream()
 
 do {
-    var useTurtle = false
+    let useTurtle = false
     let p = try HDTParser(filename: filename)
     os_signpost(.begin, log: log, name: "Parsing", "Begin")
     let hdt = try p.parse()
