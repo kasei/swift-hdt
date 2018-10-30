@@ -33,3 +33,8 @@ This project is early in development, and has many limitations:
 * Only "Bitmap" encoding of triples is currently supported
 * Only "Log64" encoding of bitmap triples values is currently supported
 * The code is not well tested
+
+### References
+
+* [HDT](http://www.rdfhdt.org)
+* [HDT Binary Format](http://www.rdfhdt.org/hdt-binary-format/)
