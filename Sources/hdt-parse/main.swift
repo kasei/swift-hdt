@@ -18,6 +18,7 @@ struct StdoutOutputStream: TextOutputStream {
 var stdout = StdoutOutputStream()
 
 do {
+    var useTurtle = false
     let p = try HDTParser(filename: filename)
     os_signpost(.begin, log: log, name: "Parsing", "Begin")
     let hdt = try p.parse()
@@ -26,7 +27,7 @@ do {
     os_signpost(.begin, log: log, name: "Enumerating Triples", "Begin")
 
     let triples = try hdt.triples()
-    let ser = NTriplesSerializer()
+    let ser : RDFSerializer = useTurtle ? TurtleSerializer() : NTriplesSerializer()
     for (i, t) in triples.enumerated() {
         if i % 25_000 == 0 {
             os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)

@@ -49,7 +49,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     var subjects: DictionarySectionMetadata!
     var predicates: DictionarySectionMetadata!
     var objects: DictionarySectionMetadata!
-    public var cacheMaxSize = 4 * 1024
+    public var cacheMaxItemsPerPosition = 8 * 1024
     var cacheReachedFullState = false
     
     var size: Int
@@ -163,11 +163,11 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
 
     private func updateCache(for id: Int64, position: LookupPosition, dictionary: [Int64:Term]) {
         let count = cache[position]!.count
-        if count == cacheMaxSize {
+        if count == cacheMaxItemsPerPosition {
             if !cacheReachedFullState {
                 os_signpost(.event, log: log, name: "Dictionary", "%{public}s cache reached cache maximum size of %{public}d", "\(position)", count)
             }
-        } else if count > cacheMaxSize {
+        } else if count > cacheMaxItemsPerPosition {
             cacheReachedFullState = true
             for _ in 0..<32 {
                 if let k = cache[position]!.keys.randomElement() {
