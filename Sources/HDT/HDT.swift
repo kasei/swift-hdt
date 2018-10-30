@@ -85,24 +85,34 @@ public class HDT {
     func generateTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S) throws -> AnyIterator<(Int64, Int64, Int64)> where S.Element == Int64 {
         let order = self.triplesMetadata.ordering
         
+        let y = data.arrayY.makeIterator()
+        let z = data.arrayZ.makeIterator()
+        let pairs = generatePairs(elements: gen.makeIterator(), index: data.bitmapY, array: y)
+        let triplets = generatePairs(elements: pairs, index: data.bitmapZ, array: z)
+
         switch order {
         case .spo:
-            let y = data.arrayY.makeIterator()
-            let z = data.arrayZ.makeIterator()
-            let pairs = generatePairs(elements: gen.makeIterator(), index: data.bitmapY, array: y)
-            let triplets = generatePairs(elements: pairs, index: data.bitmapZ, array: z)
-            let triples = triplets.lazy.map {
-                ($0.0.0, $0.0.1, $0.1)
-            }
-            
+            let triples = triplets.lazy.map { ($0.0.0, $0.0.1, $0.1) }
+            return AnyIterator(triples.makeIterator())
+        case .sop:
+            let triples = triplets.lazy.map { ($0.0.0, $0.1, $0.0.1) }
+            return AnyIterator(triples.makeIterator())
+        case .pso:
+            let triples = triplets.lazy.map { ($0.0.1, $0.0.0, $0.1) }
+            return AnyIterator(triples.makeIterator())
+        case .pos:
+            let triples = triplets.lazy.map { ($0.1, $0.0.0, $0.0.0) }
+            return AnyIterator(triples.makeIterator())
+        case .osp:
+            let triples = triplets.lazy.map { ($0.0.1, $0.1, $0.0.0) }
+            return AnyIterator(triples.makeIterator())
+        case .ops:
+            let triples = triplets.lazy.map { ($0.1, $0.0.1, $0.0.0) }
             return AnyIterator(triples.makeIterator())
         case .unknown:
             throw HDTError.error("Cannot parse bitmap triples block with unknown ordering")
-        default:
-            fatalError("TODO: Reading \(order)-ordered triples currently unimplemented")
         }
     }
-    
     
     func readTriples(at offset: off_t, dictionary: HDTDictionaryProtocol) throws -> AnyIterator<(Int64, Int64, Int64)> {
         switch self.triplesMetadata.format {
