@@ -31,4 +31,5 @@ This project is early in development, and has many limitations:
 * Only "Four Part" dictionary encoding is currently supported
 * Only SPO ordering of triples is currently supported
 * Only "Bitmap" encoding of triples is currently supported
+* Only "Log64" encoding of bitmap triples values is currently supported
 * The code is not well tested
