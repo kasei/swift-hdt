@@ -23,6 +23,13 @@ public class HDTParser {
         var properties: [String:String]
         var crc: UInt16
         
+        var triplesCount: Int? {
+            guard let countNumber = properties["numTriples"], let count = Int(countNumber) else {
+                return nil
+            }
+            return count
+        }
+        
         var tripleOrdering: TripleOrdering? {
             guard let orderNumber = properties["order"], let i = Int(orderNumber), let order = TripleOrdering(rawValue: i) else {
                 return nil
@@ -214,11 +221,13 @@ public class HDTParser {
             throw HDTError.error("Missing or invalid ordering metadata present in triples block")
         }
         
+        let triplesCount = info
+        
         switch info.format {
         case "<http://purl.org/HDT/hdt#triplesBitmap>":
-            return TriplesMetadata(format: .bitmap, ordering: order, offset: offset + ciLength)
+            return TriplesMetadata(format: .bitmap, ordering: order, count: info.triplesCount, offset: offset + ciLength)
         case "<http://purl.org/HDT/hdt#triplesList>":
-            return TriplesMetadata(format: .list, ordering: order, offset: offset + ciLength)
+            return TriplesMetadata(format: .list, ordering: order, count: info.triplesCount, offset: offset + ciLength)
         default:
             throw HDTError.error("Unrecognized triples format: \(info.format)")
         }

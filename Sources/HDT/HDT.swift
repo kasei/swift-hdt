@@ -82,7 +82,22 @@ public class HDT {
         return AnyIterator(i)
     }
     
-    func generateTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S) throws -> AnyIterator<(Int64, Int64, Int64)> where S.Element == Int64 {
+    func generateListTriples(at offset: off_t, triples count: Int) throws -> AnyIterator<(Int64, Int64, Int64)> {
+        let readBuffer = mmappedPtr + Int(offset)
+        let p = readBuffer.assumingMemoryBound(to: UInt32.self)
+
+        let buffer = UnsafeBufferPointer(start: p, count: 3*count)
+        let s = stride(from: buffer.startIndex, to: buffer.endIndex, by: 3)
+        let t = s.lazy.map { (Int64(buffer[$0]), Int64(buffer[$0+1]), Int64(buffer[$0+2])) }
+        
+        let ptr = readBuffer + (4*3*count)
+        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+        // TODO: verify crc
+
+        return AnyIterator(t.makeIterator())
+    }
+
+    func generateBitmapTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S) throws -> AnyIterator<(Int64, Int64, Int64)> where S.Element == Int64 {
         let order = self.triplesMetadata.ordering
         
         let y = data.arrayY.makeIterator()
@@ -119,10 +134,14 @@ public class HDT {
         case .bitmap:
             let (data, _) = try readTriplesBitmap(at: self.triplesMetadata.offset)
             let ids = dictionary.idSequence(for: .subject) // TODO: this should be based on the first position in the HDT ordering
-            let triples = try generateTriples(data: data, topLevelIDs: ids)
+            let triples = try generateBitmapTriples(data: data, topLevelIDs: ids)
             return triples
         case .list:
-            fatalError("TODO: Reading list-based triples currently unimplemented")
+            guard let count = self.triplesMetadata.count else {
+                throw HDTError.error("Cannot parse list triples because no numTriples property value was found")
+            }
+            let triples = try generateListTriples(at: self.triplesMetadata.offset, triples: count)
+            return triples
         }
     }
     

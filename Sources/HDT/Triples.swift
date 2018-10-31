@@ -31,5 +31,6 @@ struct TriplesMetadata {
     
     var format: Format
     var ordering: TripleOrdering
+    var count: Int?
     var offset: off_t
 }

@@ -29,7 +29,6 @@ This project is early in development, and has many limitations:
 * Currently only compiles on MacOS 10.14
 * Only serializing the entire HDT file is possible (triple pattern matching will come in the future)
 * Only "Four Part" dictionary encoding is currently supported
-* Only "Bitmap" encoding of triples is currently supported
 * Only "Log64" encoding of bitmap triples values is currently supported
 * The code is not well tested
 
