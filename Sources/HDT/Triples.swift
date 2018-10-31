@@ -1,8 +1,8 @@
 import Foundation
 
 struct BitmapTriplesData {
-    var bitmapY : BlockIterator<AnyIterator<[Int]>, Int>
-    var bitmapZ : BlockIterator<AnyIterator<[Int]>, Int>
+    var bitmapY : BlockIterator<Int>
+    var bitmapZ : BlockIterator<Int>
     var arrayY : AnySequence<Int64>
     var arrayZ : AnySequence<Int64>
 }

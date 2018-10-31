@@ -138,7 +138,7 @@ func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, as
     return (seq, length)
 }
 
-func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (BlockIterator<AnyIterator<[Int]>, Int>, Int64) {
+func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (BlockIterator<Int>, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
 
@@ -160,29 +160,26 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     let data = Data(bytes: ptr, count: bytes)
 
     var shift = 0
-    let seq = AnySequence { () -> AnyIterator<[Int]> in
-        let base = AnyIterator { () -> [Int]? in
-            var block = [Int]()
-            for _ in 0..<16 {
-                guard shift < data.count else {
-                    return nil
-                }
-                let b = data[shift]
-                let add = shift*8
-                if (b & 0x01) > 0 { block.append(0 + add) }
-                if (b & 0x02) > 0 { block.append(1 + add) }
-                if (b & 0x04) > 0 { block.append(2 + add) }
-                if (b & 0x08) > 0 { block.append(3 + add) }
-                if (b & 0x10) > 0 { block.append(4 + add) }
-                if (b & 0x20) > 0 { block.append(5 + add) }
-                if (b & 0x40) > 0 { block.append(6 + add) }
-                if (b & 0x80) > 0 { block.append(7 + add) }
-    //            print("\(offset): [\(shift)]: \(block)")
-                shift += 1
+    let blockIterator = BlockIterator { () -> [Int]? in
+        var block = [Int]()
+        for _ in 0..<16 {
+            guard shift < data.count else {
+                return nil
             }
-            return block
+            let b = data[shift]
+            let add = shift*8
+            if (b & 0x01) > 0 { block.append(0 + add) }
+            if (b & 0x02) > 0 { block.append(1 + add) }
+            if (b & 0x04) > 0 { block.append(2 + add) }
+            if (b & 0x08) > 0 { block.append(3 + add) }
+            if (b & 0x10) > 0 { block.append(4 + add) }
+            if (b & 0x20) > 0 { block.append(5 + add) }
+            if (b & 0x40) > 0 { block.append(6 + add) }
+            if (b & 0x80) > 0 { block.append(7 + add) }
+//            print("\(offset): [\(shift)]: \(block)")
+            shift += 1
         }
-        return base
+        return block
     }
     
     ptr += bytes
@@ -193,8 +190,7 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     
     let length = Int64(readBuffer.distance(to: ptr))
     
-    let i : BlockIterator<AnyIterator<[Int]>, Int> = BlockIterator(seq.makeIterator())
-    return (i, length)
+    return (blockIterator, length)
 }
 
 func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (AnySequence<Int64>, Int64) {
@@ -249,12 +245,12 @@ public struct ConcatenateIterator<I: IteratorProtocol> : IteratorProtocol {
     }
 }
 
-public struct BlockIterator<I : IteratorProtocol, K>: IteratorProtocol where I.Element == [K] {
-    var base: I
+public struct BlockIterator<K>: IteratorProtocol {
+    var base: () -> [K]?
     var open: Bool
     var buffer: [K]
     var index: Int
-    public init(_ base: I) {
+    public init(_ base: @escaping () -> [K]?) {
         self.open = true
         self.base = base
         self.buffer = []
@@ -273,7 +269,7 @@ public struct BlockIterator<I : IteratorProtocol, K>: IteratorProtocol where I.E
                 return item
             }
 
-            guard let newBuffer = base.next() else {
+            guard let newBuffer = base() else {
                 open = false
                 return nil
             }

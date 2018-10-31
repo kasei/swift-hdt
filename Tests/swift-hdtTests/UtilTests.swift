@@ -19,7 +19,7 @@ final class UtilTests: XCTestCase {
             [6,7,8,9]
         ]
         
-        let base = AnyIterator { () -> [Int]? in
+        let i = BlockIterator { () -> [Int]? in
             let block = data.first
             if !data.isEmpty {
                 data.remove(at: 0)
@@ -27,7 +27,6 @@ final class UtilTests: XCTestCase {
             return block
         }
         
-        let i = BlockIterator(base)
         let got = Array(IteratorSequence(i))
         let expected = Array(1...9)
         XCTAssertEqual(got, expected)
