@@ -162,23 +162,29 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     var shift = 0
     let blockIterator = BlockIterator { () -> [Int]? in
         var block = [Int]()
-        for _ in 0..<16 {
-            guard shift < data.count else {
-                return nil
+        repeat {
+            for _ in 0..<16 {
+                guard shift < data.count else {
+                    if block.isEmpty {
+                        return nil
+                    } else {
+                        return block
+                    }
+                }
+                let b = data[shift]
+                let add = shift*8
+                if (b & 0x01) > 0 { block.append(0 + add) }
+                if (b & 0x02) > 0 { block.append(1 + add) }
+                if (b & 0x04) > 0 { block.append(2 + add) }
+                if (b & 0x08) > 0 { block.append(3 + add) }
+                if (b & 0x10) > 0 { block.append(4 + add) }
+                if (b & 0x20) > 0 { block.append(5 + add) }
+                if (b & 0x40) > 0 { block.append(6 + add) }
+                if (b & 0x80) > 0 { block.append(7 + add) }
+    //            print("\(offset): [\(shift)]: \(block)")
+                shift += 1
             }
-            let b = data[shift]
-            let add = shift*8
-            if (b & 0x01) > 0 { block.append(0 + add) }
-            if (b & 0x02) > 0 { block.append(1 + add) }
-            if (b & 0x04) > 0 { block.append(2 + add) }
-            if (b & 0x08) > 0 { block.append(3 + add) }
-            if (b & 0x10) > 0 { block.append(4 + add) }
-            if (b & 0x20) > 0 { block.append(5 + add) }
-            if (b & 0x40) > 0 { block.append(6 + add) }
-            if (b & 0x80) > 0 { block.append(7 + add) }
-//            print("\(offset): [\(shift)]: \(block)")
-            shift += 1
-        }
+        } while block.isEmpty
         return block
     }
     
@@ -257,6 +263,13 @@ public struct BlockIterator<K>: IteratorProtocol {
         self.index = buffer.endIndex
     }
 
+    public mutating func dropFirst(_ k: Int) {
+        // OPTIMIZE: drop in blocks
+        for _ in 0..<k {
+            _ = next()
+        }
+    }
+    
     public mutating func next() -> K? {
         guard self.open else {
             return nil
@@ -269,7 +282,7 @@ public struct BlockIterator<K>: IteratorProtocol {
                 return item
             }
 
-            guard let newBuffer = base() else {
+            guard open, let newBuffer = base() else {
                 open = false
                 return nil
             }
