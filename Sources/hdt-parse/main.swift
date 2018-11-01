@@ -28,13 +28,14 @@ do {
 
     let triples = try hdt.triples()
     let ser : RDFSerializer = useTurtle ? TurtleSerializer() : NTriplesSerializer()
-    for (i, t) in triples.enumerated() {
-        if i % 25_000 == 0 {
-            os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
-        }
-        
-        try ser.serialize([t], to: &stdout)
-    }
+    try ser.serialize(triples, to: &stdout)
+//    for (i, t) in triples.enumerated() {
+//        if i % 25_000 == 0 {
+//            os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
+//        }
+//
+//        try ser.serialize([t], to: &stdout)
+//    }
 
     os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")
 } catch let error {

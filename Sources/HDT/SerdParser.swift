@@ -174,24 +174,31 @@ private func serd_node_as_term(env: OpaquePointer?, node: SerdNode, datatype: St
     }
 }
 
-public struct SerdParser {
+public class SerdParser {
     var inputSyntax: RDFSyntax
     var defaultBase: String
     var produceUniqueBlankIdentifiers: Bool
+    var baseUri: SerdURI
+    var base: SerdNode
+    var env: OpaquePointer
     
-    public init(syntax: RDFSyntax = .turtle, base defaultBase: String = "http://base.example.org/", produceUniqueBlankIdentifiers: Bool = true) {
+    public init(syntax: RDFSyntax = .turtle, base defaultBase: String = "http://base.example.org/", produceUniqueBlankIdentifiers: Bool = true) throws {
         self.inputSyntax = syntax
         self.defaultBase = defaultBase
         self.produceUniqueBlankIdentifiers = produceUniqueBlankIdentifiers
+        self.baseUri = SERD_URI_NULL
+        self.base = SERD_NODE_NULL
+        guard let env = serd_env_new(&base) else { throw HDTError.error("Failed to construct parser context") }
+        self.base = serd_node_new_uri_from_string(defaultBase, nil, &baseUri)
+        self.env = env
+    }
+    
+    deinit {
+        serd_env_free(env)
+        serd_node_free(&base)
     }
     
     public func parse(string: String, handleTriple: @escaping (Term, Term, Term) -> Void) throws -> Int {
-        var baseUri = SERD_URI_NULL
-        var base = SERD_NODE_NULL
-        
-        guard let env = serd_env_new(&base) else { throw HDTError.error("Failed to construct parser context") }
-        base = serd_node_new_uri_from_string(defaultBase, nil, &baseUri)
-        
         var context = ParserContext(env: env, handler: handleTriple, produceUniqueBlankIdentifiers: produceUniqueBlankIdentifiers)
         let status = withUnsafePointer(to: &context) { (ctx) -> SerdStatus in
             guard let reader = serd_reader_new(inputSyntax.serdSyntax!, UnsafeMutableRawPointer(mutating: ctx), serd_free_handle, serd_base_sink, serd_prefix_sink, serd_statement_sink, serd_end_sink) else { fatalError() }
@@ -204,9 +211,6 @@ public struct SerdParser {
             return status
         }
         
-        serd_env_free(env)
-        serd_node_free(&base)
-        
         if status != SERD_SUCCESS {
             throw HDTError.error("Failed to parse string using serd: \(string)")
         }
@@ -217,8 +221,7 @@ public struct SerdParser {
     public func parse(file filename: String, base _base: String? = nil , handleTriple: @escaping TripleHandler) throws -> Int {
         guard let input = serd_uri_to_path(filename) else { throw HDTError.error("no such file") }
         
-        var baseUri = SERD_URI_NULL
-        var base = SERD_NODE_NULL
+        var base = self.base
         if let b = _base {
             base = serd_node_new_uri_from_string(b, &baseUri, nil)
         } else {

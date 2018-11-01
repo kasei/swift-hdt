@@ -65,7 +65,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         self.mmappedPtr = mmappedPtr
         self.size = size
         self.metadata = metadata
-        self.rdfParser = SerdParser(syntax: .turtle, base: "http://example.org/", produceUniqueBlankIdentifiers: false)
+        self.rdfParser = try SerdParser(syntax: .turtle, base: "http://example.org/", produceUniqueBlankIdentifiers: false)
 
         var offset = metadata.offset
         
@@ -218,7 +218,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             return Term(value: String(s.dropFirst(2)), type: .blank)
         } else if s.hasPrefix("\"") {
             var term: Term? = nil
-            _ = try rdfParser.parse(string: "<s> <p> \(s) .") { (s, p, o) in
+            _ = try rdfParser.parse(string: "<x:> <x:> \(s) .") { (_, _, o) in
                 term = o
             }
             guard let t = term else {
