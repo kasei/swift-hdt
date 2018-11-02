@@ -23,6 +23,9 @@ let package = Package(
         .target(
             name: "hdt-parse",
             dependencies: ["HDT", "Kineo"]),
+        .target(
+            name: "hdt-info",
+            dependencies: ["HDT"]),
         .testTarget(
             name: "swift-hdtTests",
             dependencies: ["HDT", "Kineo"]),

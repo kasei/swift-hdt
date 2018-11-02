@@ -8,36 +8,6 @@ import os.signpost
 public class HDTParser {
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
     
-    enum ControlType : UInt8 {
-        case unknown = 0
-        case global = 1
-        case header = 2
-        case dictionary = 3
-        case triples = 4
-        case index = 5
-    }
-    
-    struct ControlInformation {
-        var type: ControlType
-        var format: String
-        var properties: [String:String]
-        var crc: UInt16
-        
-        var triplesCount: Int? {
-            guard let countNumber = properties["numTriples"], let count = Int(countNumber) else {
-                return nil
-            }
-            return count
-        }
-        
-        var tripleOrdering: TripleOrdering? {
-            guard let orderNumber = properties["order"], let i = Int(orderNumber), let order = TripleOrdering(rawValue: i) else {
-                return nil
-            }
-            return order
-        }
-    }
-    
     enum DictionaryType : UInt32 {
         case dictionarySectionPlain = 1
         case dictionarySectionPlainFrontCoding = 2
@@ -77,7 +47,7 @@ public class HDTParser {
     
     public func parse() throws -> HDT {
         var offset : Int64 = 0
-        let (_, ciLength) = try readControlInformation(at: offset)
+        let (ci, ciLength) = try readControlInformation(at: offset)
         offset += ciLength
         
         os_signpost(.begin, log: log, name: "Parsing Header", "Begin")
@@ -98,6 +68,7 @@ public class HDTParser {
             filename: filename,
             size: size,
             ptr: mmappedPtr,
+            control: ci,
             header: header,
             triples: triples,
             dictionary: dictionary
@@ -143,7 +114,7 @@ public class HDTParser {
         return length
     }
     
-    func parseDictionaryTypeFour(at offset: off_t) throws -> (DictionaryMetadata, Int64) {
+    func parseDictionaryTypeFour(at offset: off_t, control info: HDT.ControlInformation) throws -> (DictionaryMetadata, Int64) {
         var offset = offset
         let dictionaryOffset = offset
         
@@ -166,6 +137,7 @@ public class HDTParser {
         let currentLength = sharedLength + subjectsLength + predicatesLength + objectsLength
         
         let offsets = DictionaryMetadata(
+            controlInformation: info,
             type: .fourPart,
             offset: dictionaryOffset,
             sharedOffset: sharedOffset,
@@ -180,7 +152,7 @@ public class HDTParser {
         let (info, ciLength) = try readControlInformation(at: offset)
         
         if info.format == "<http://purl.org/HDT/hdt#dictionaryFour>" {
-            let (offsets, dLength) = try parseDictionaryTypeFour(at: offset + ciLength)
+            let (offsets, dLength) = try parseDictionaryTypeFour(at: offset + ciLength, control: info)
             return (offsets, ciLength + dLength)
         } else {
             throw HDTError.error("unimplemented dictionary format type: \(info.format)")
@@ -225,15 +197,15 @@ public class HDTParser {
         
         switch info.format {
         case "<http://purl.org/HDT/hdt#triplesBitmap>":
-            return TriplesMetadata(format: .bitmap, ordering: order, count: info.triplesCount, offset: offset + ciLength)
+            return TriplesMetadata(controlInformation: info, format: .bitmap, ordering: order, count: info.triplesCount, offset: offset + ciLength)
         case "<http://purl.org/HDT/hdt#triplesList>":
-            return TriplesMetadata(format: .list, ordering: order, count: info.triplesCount, offset: offset + ciLength)
+            return TriplesMetadata(controlInformation: info, format: .list, ordering: order, count: info.triplesCount, offset: offset + ciLength)
         default:
             throw HDTError.error("Unrecognized triples format: \(info.format)")
         }
     }
     
-    func readControlInformation(at offset: off_t) throws -> (ControlInformation, Int64) {
+    func readControlInformation(at offset: off_t) throws -> (HDT.ControlInformation, Int64) {
         var readBuffer = mmappedPtr
         readBuffer += Int(offset)
 
@@ -243,7 +215,7 @@ public class HDTParser {
         let cLength = 1
         let cPtr = readBuffer + cookieLength
         let cValue = cPtr.assumingMemoryBound(to: UInt8.self)[0]
-        guard let c = ControlType(rawValue: cValue) else {
+        guard let c = HDT.ControlInformation.ControlType(rawValue: cValue) else {
             throw HDTError.error("Unexpected value for Control Type: \(cValue) at offset \(offset)")
         }
         
@@ -275,7 +247,7 @@ public class HDTParser {
         }
         
         let length = cookieLength + cLength + fLength + pLength + crcLength
-        let ci = ControlInformation(type: c, format: format, properties: properties, crc: crc16)
+        let ci = HDT.ControlInformation(type: c, format: format, properties: properties, crc: crc16)
         return (ci, Int64(length))
     }
     

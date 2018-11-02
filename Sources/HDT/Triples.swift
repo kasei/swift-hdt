@@ -21,21 +21,34 @@ public enum TripleOrdering: Int, CustomStringConvertible {
     case ops = 6
     
     public var description : String {
-        let ordering = ["SPO", "SOP", "PSO", "POS", "OSP", "OPS"]
+        let ordering = ["unknown", "SPO", "SOP", "PSO", "POS", "OSP", "OPS"]
         return ordering[rawValue]
     }
 }
 
-public struct TriplesMetadata {
+public struct TriplesMetadata: CustomDebugStringConvertible {
     enum Format {
         case bitmap
         case list
     }
     
+    var controlInformation: HDT.ControlInformation
     var format: Format
     var ordering: TripleOrdering
     var count: Int?
     var offset: off_t
+    
+    public var debugDescription: String {
+        var s = ""
+        print(controlInformation, to: &s)
+        print("offset: \(offset)", to: &s)
+        print("format: .\(format)", to: &s)
+        print("order: <\(ordering)>", to: &s)
+        if let count = count {
+            print("count: \(count)", to: &s)
+        }
+        return s
+    }
 }
 
 func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol>(elements: I, index _bits: J, array: C, startingElementOffset: Int = 0, verbose: Bool = false) -> AnyIterator<(I.Element, C.Element)> where J.Element == Int {
@@ -80,7 +93,7 @@ func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol
     return AnyIterator(gen)
 }
 
-public protocol HDTTriples {
+public protocol HDTTriples: CustomDebugStringConvertible {
     var metadata: TriplesMetadata { get }
     init(metadata: TriplesMetadata, size: Int, ptr: UnsafeMutableRawPointer) throws
 }
@@ -114,11 +127,24 @@ public final class HDTListTriples: HDTTriples {
         return AnyIterator(t.makeIterator())
     }
 
-    public func idTriples(restrict restriction: IDRestriction) throws -> AnyIterator<HDT.IDTriple> {
+    public func idTriples(restrict restriction: IDRestriction) throws -> (Int64, AnyIterator<HDT.IDTriple>) {
         guard let count = metadata.count else {
             throw HDTError.error("Cannot parse list triples because no numTriples property value was found")
         }
-        return try generateListTriples(at: metadata.offset, triples: count)
+        let t = try generateListTriples(at: metadata.offset, triples: count)
+        return (Int64(count), t)
+    }
+}
+
+extension HDTListTriples: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        var s = ""
+        print(metadata, terminator: "", to: &s)
+        do {
+            let (count, _) = try idTriples(restrict: (nil, nil, nil))
+            print("parsed triple count: \(count)", to: &s)
+        } catch {}
+        return s
     }
 }
 
@@ -135,16 +161,16 @@ public final class HDTBitmapTriples: HDTTriples {
         self.size = size
     }
     
-    func readTriplesBitmap() throws -> (BitmapTriplesData, Int64) {
+    func readTriplesBitmap() throws -> (BitmapTriplesData, Int64, Int64) {
         let offset = metadata.offset
-        let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
-        let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
+        let (bitmapY, _, byLength) = try readBitmap(from: mmappedPtr, at: offset)
+        let (bitmapZ, zBitCount, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
         let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
         let (arrayZ, azLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength + ayLength)
         
         let length = byLength + bzLength + ayLength + azLength
         let data = BitmapTriplesData(bitmapY: bitmapY, bitmapZ: bitmapZ, arrayY: arrayY, arrayZ: arrayZ)
-        return (data, length)
+        return (data, zBitCount, length)
     }
     
     func generateBitmapTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S, restrict restriction: IDRestriction) throws -> AnyIterator<HDT.IDTriple> where S.Element == Int64 {
@@ -202,9 +228,23 @@ public final class HDTBitmapTriples: HDTTriples {
         return triplesIterator
     }
     
-    public func idTriples<S: Sequence>(ids: S, restrict restriction: IDRestriction) throws -> AnyIterator<HDT.IDTriple> where S.Element == HDT.TermID {
-        let (data, _) = try self.readTriplesBitmap()
+    public func idTriples<S: Sequence>(ids: S, restrict restriction: IDRestriction) throws -> (Int64, AnyIterator<HDT.IDTriple>) where S.Element == HDT.TermID {
+        let (data, count, _) = try self.readTriplesBitmap()
         let t = try self.generateBitmapTriples(data: data, topLevelIDs: ids, restrict: restriction)
-        return t
+        return (count, t)
     }
 }
+
+extension HDTBitmapTriples: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        var s = ""
+        print(metadata, terminator: "", to: &s)
+        do {
+            let ids = (0...).lazy.map { HDT.TermID($0) }
+            let (count, _) = try self.idTriples(ids: ids, restrict: (nil, nil, nil))
+            print("parsed triple count: \(count)", to: &s)
+        } catch {}
+        return s
+    }
+}
+

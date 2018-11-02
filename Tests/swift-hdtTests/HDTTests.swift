@@ -83,7 +83,7 @@ final class HDTTests: XCTestCase {
             ]
 
         let dictionary = try hdt.readDictionary(at: 1819)
-        let triples : AnyIterator<HDT.IDTriple> = try hdt.readIDTriples(at: 5159548, dictionary: dictionary, restrict: (nil, nil, nil))
+        let (count, triples) = try hdt.readIDTriples(at: 5159548, dictionary: dictionary, restrict: (nil, nil, nil))
         let gotPrefix = Array(triples.prefix(expectedPrefix.count))
         for (g, e) in zip(gotPrefix, expectedPrefix) {
 //            print("got triple: \(g)")

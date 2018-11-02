@@ -138,7 +138,7 @@ func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, as
     return (seq, length)
 }
 
-func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (BlockIterator<Int>, Int64) {
+func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (BlockIterator<Int>, Int64, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
 
@@ -196,7 +196,7 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     
     let length = Int64(readBuffer.distance(to: ptr))
     
-    return (blockIterator, length)
+    return (blockIterator, Int64(bitCount), length)
 }
 
 func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (AnySequence<Int64>, Int64) {

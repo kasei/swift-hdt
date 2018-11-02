@@ -19,14 +19,58 @@ public class HDT {
     var pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
+    public var controlInformation: ControlInformation
 
-    init(filename: String, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer, header: String, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
+    public struct ControlInformation: CustomDebugStringConvertible {
+        public enum ControlType : UInt8 {
+            case unknown = 0
+            case global = 1
+            case header = 2
+            case dictionary = 3
+            case triples = 4
+            case index = 5
+        }
+        
+        var type: ControlType
+        var format: String
+        var properties: [String:String]
+        var crc: UInt16
+        
+        var triplesCount: Int? {
+            guard let countNumber = properties["numTriples"], let count = Int(countNumber) else {
+                return nil
+            }
+            return count
+        }
+        
+        var tripleOrdering: TripleOrdering? {
+            guard let orderNumber = properties["order"], let i = Int(orderNumber), let order = TripleOrdering(rawValue: i) else {
+                return nil
+            }
+            return order
+        }
+        
+        public var debugDescription: String {
+            return """
+            ControlInformation(
+                type: .\(type),
+                format: "\(format)",
+                properties: \(properties),
+                crc: \(String(format: "0x%02x", crc))
+            )
+            """
+        }
+    }
+    
+    init(filename: String, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer, control ci: ControlInformation, header: String, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
         self.filename = filename
         self.size = size
         self.mmappedPtr = mmappedPtr
         self.header = header
         self.triplesMetadata = triples
         self.dictionaryMetadata = dictionary
+        self.controlInformation = ci
+
         self.state = .none
     }
     
@@ -35,24 +79,40 @@ public class HDT {
     }
     
     func term(for id: Int64, position: LookupPosition) throws -> Term? {
-        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        let dictionary = try hdtDictionary()
         return try dictionary.term(for: id, position: position)
     }
     
     func id(for term: Term, position: LookupPosition) throws -> Int64? {
-        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        let dictionary = try hdtDictionary()
         return try dictionary.id(for: term, position: position)
     }
 
-    func readIDTriples(at offset: off_t, dictionary: HDTDictionaryProtocol, restrict restriction: IDRestriction) throws -> AnyIterator<IDTriple> {
+    func triplesSection() throws -> HDTTriples {
         switch self.triplesMetadata.format {
         case .bitmap:
-            let ids = dictionary.idSequence(for: .subject) // TODO: this should be based on the first position in the HDT ordering
             let t = try HDTBitmapTriples(metadata: triplesMetadata, size: size, ptr: mmappedPtr)
-            let triples = try t.idTriples(ids: ids, restrict: restriction)
-            return triples
+            return t
         case .list:
             let t = try HDTListTriples(metadata: triplesMetadata, size: size, ptr: mmappedPtr)
+            return t
+        }
+    }
+    
+    func readIDTriples(at offset: off_t, dictionary: HDTDictionaryProtocol, restrict restriction: IDRestriction) throws -> (Int64, AnyIterator<IDTriple>) {
+        
+        switch self.triplesMetadata.format {
+        case .bitmap:
+            guard let t = try triplesSection() as? HDTBitmapTriples else {
+                throw HDTError.error("Unexpected triples section type in readIDTriples")
+            }
+            let ids = dictionary.idSequence(for: .subject) // TODO: this should be based on the first position in the HDT ordering
+            let (count, triples) = try t.idTriples(ids: ids, restrict: restriction)
+            return (count, triples)
+        case .list:
+            guard let t = try triplesSection() as? HDTListTriples else {
+                throw HDTError.error("Unexpected triples section type in readIDTriples")
+            }
             return try t.idTriples(restrict: restriction)
         }
     }
@@ -66,6 +126,29 @@ public class HDT {
     }
 }
 
+extension HDT: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        do {
+            var s = ""
+            print("HDT:", to: &s)
+            print(controlInformation, to: &s)
+            print("", to: &s)
+            
+            print("Dictionary:", to: &s)
+            let dictionary = try hdtDictionary()
+            print(dictionary, to: &s)
+            print("", to: &s)
+            
+            print("Triples:", to: &s)
+            let t = try triplesSection()
+            print(t, to: &s)
+            
+            return s
+        } catch {
+            return "(*** error describing HDT ***)"
+        }
+    }
+}
 
 public extension HDT {
     private class HDTTriplesIterator<I: IteratorProtocol>: IteratorProtocol where I.Element == Triple {
@@ -84,9 +167,14 @@ public extension HDT {
         }
     }
 
-    public func triples() throws -> AnyIterator<Triple> {
+    func hdtDictionary() throws -> HDTDictionaryProtocol {
         let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
-        let tripleIDs = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: (nil, nil, nil))
+        return dictionary
+    }
+    
+    public func triples() throws -> AnyIterator<Triple> {
+        let dictionary = try hdtDictionary()
+        let (_, tripleIDs) = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: (nil, nil, nil))
         let triples = tripleIDs.lazy.compactMap { self.mapToTriple(ids: $0, from: dictionary) }
         
         let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
@@ -116,7 +204,7 @@ public extension HDT {
         guard case .spo = order else {
             throw HDTError.error("TriplePattern matching on non-SPO ordered triples is unimplemented") // TODO
         }
-        let tripleIDs = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: restriction)
+        let (_, tripleIDs) = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: restriction)
         let triples = tripleIDs.lazy
             .filter {
                 if let s = restriction.0, s != $0.0 {
@@ -137,7 +225,7 @@ public extension HDT {
     }
     
     public func triples(matching tp: TriplePattern) throws -> AnyIterator<Triple> {
-        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        let dictionary = try hdtDictionary()
         
         var restrictions = [LookupPosition:Int64]()
         var variables = [LookupPosition:String]()

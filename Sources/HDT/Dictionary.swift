@@ -3,17 +3,30 @@ import SPARQLSyntax
 import os.log
 import os.signpost
 
-struct DictionaryMetadata {
+public struct DictionaryMetadata: CustomDebugStringConvertible {
     enum DictionaryType {
         case fourPart
     }
     
+    var controlInformation: HDT.ControlInformation
     var type: DictionaryType
     var offset: off_t
     var sharedOffset: off_t
     var subjectsOffset: off_t
     var predicatesOffset: off_t
     var objectsOffset: off_t
+    
+    public var debugDescription: String {
+        var s = ""
+        print(controlInformation, to: &s)
+        print("offset: \(offset)", to: &s)
+        print("type: .\(type)")
+        print("shared offset: \(sharedOffset)", to: &s)
+        print("subjects offset: \(subjectsOffset)", to: &s)
+        print("predicates offset: \(predicatesOffset)", to: &s)
+        print("objects offset: \(objectsOffset)", to: &s)
+        return s
+    }
 }
 
 public enum LookupPosition {
@@ -27,11 +40,18 @@ struct TermLookupPair: Hashable {
     var id: Int64
 }
 
-public protocol HDTDictionaryProtocol {
+public protocol HDTDictionaryProtocol: CustomDebugStringConvertible {
     var count: Int { get }
+    var metadata: DictionaryMetadata { get }
     func term(for id: Int64, position: LookupPosition) throws -> Term?
     func id(for term: Term, position: LookupPosition) throws -> Int64?
     func idSequence(for position: LookupPosition) -> AnySequence<Int64>
+}
+
+extension HDTDictionaryProtocol {
+    public var controlInformation : HDT.ControlInformation {
+        return metadata.controlInformation
+    }
 }
 
 public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
@@ -47,9 +67,8 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         var sharedBlocks: [Int]
     }
 
-    var rdfParser: SerdParser
     var cache: [TermLookupPair: Term]
-    var metadata: DictionaryMetadata
+    public var metadata: DictionaryMetadata
     var shared: DictionarySectionMetadata!
     var subjects: DictionarySectionMetadata!
     var predicates: DictionarySectionMetadata!
@@ -65,7 +84,6 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         self.mmappedPtr = mmappedPtr
         self.size = size
         self.metadata = metadata
-        self.rdfParser = try SerdParser(syntax: .turtle, base: "http://example.org/", produceUniqueBlankIdentifiers: false)
 
         var offset = metadata.offset
         
@@ -221,19 +239,20 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         if s.hasPrefix("_") { // blank nodes start _:
             return Term(value: String(s.dropFirst(2)), type: .blank)
         } else if s.hasPrefix("\"") {
-            var term: Term? = nil
-            do {
-                _ = try rdfParser.parse(string: "<x:> <x:> \(s) .") { (_, _, o) in
-                    term = o
-                }
-            } catch let error {
-                //                warn(">>> failed to parse string as a term: \(s)")
-                throw error
+            let i = s.lastIndex(of: "\"")!
+            let value = s.dropFirst().prefix(upTo: i)
+            
+            let suffix = s[i...].dropFirst()
+            if suffix.hasPrefix("^^<") {
+                let dtIRI = String(suffix.dropFirst(3).dropLast())
+                let dt = TermDataType(stringLiteral: dtIRI)
+                return Term(value: String(value), type: .datatype(dt))
+            } else if suffix.hasPrefix("@") {
+                let lang = String(suffix.dropFirst())
+                return Term(value: String(value), type: .language(lang))
+            } else {
+                return Term(string: String(value))
             }
-            guard let t = term else {
-                throw HDTError.error("Failed to parse literal value")
-            }
-            return t
         } else {
             return Term(iri: s)
         }
@@ -353,5 +372,13 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             startingID: startingID,
             sharedBlocks: blocksArray.lazy.map { Int($0) }
         )
+    }
+}
+
+extension HDTLazyFourPartDictionary: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        var s = ""
+        print(metadata, terminator: "", to: &s)
+        return s
     }
 }
