@@ -7,6 +7,9 @@ public enum HDTError: Error {
 }
 
 public class HDT {
+    public typealias TermID = Int64
+    public typealias IDTriple = (TermID, TermID, TermID)
+    
     var filename: String
     var header: String
     var triplesMetadata: TriplesMetadata
@@ -17,22 +20,6 @@ public class HDT {
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
 
-    private class HDTTriplesIterator: IteratorProtocol {
-        typealias Element = Triple
-        
-        var hdt: HDT
-        var triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator
-        
-        init(hdt: HDT, triples: LazyMapSequence<LazyFilterSequence<LazyMapSequence<AnyIterator<(Int64, Int64, Int64)>, Triple?>>, Triple>.Iterator) {
-            self.hdt = hdt
-            self.triples = triples
-        }
-        
-        func next() -> Triple? {
-            return triples.next()
-        }
-    }
-    
     init(filename: String, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer, header: String, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
         self.filename = filename
         self.size = size
@@ -56,148 +43,20 @@ public class HDT {
         let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
         return try dictionary.id(for: term, position: position)
     }
-    
-    public func triples() throws -> AnyIterator<Triple> {
-        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
-        let tripleIDs = try readTriples(at: self.triplesMetadata.offset, dictionary: dictionary)
-        let triples = tripleIDs.lazy.compactMap { t -> Triple? in
-            do {
-                guard let s = try dictionary.term(for: t.0, position: .subject) else {
-                    return nil
-                }
-                guard let p = try dictionary.term(for: t.1, position: .predicate) else {
-                    return nil
-                }
-                guard let o = try dictionary.term(for: t.2, position: .object) else {
-                    return nil
-                }
-                return Triple(subject: s, predicate: p, object: o)
-            } catch let error {
-                print(">>> \(error)")
-                return nil
-            }
-        }
-        
-        let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
-        return AnyIterator(i)
-    }
-    
-    func generateListTriples(at offset: off_t, triples count: Int) throws -> AnyIterator<(Int64, Int64, Int64)> {
-        let readBuffer = mmappedPtr + Int(offset)
-        let p = readBuffer.assumingMemoryBound(to: UInt32.self)
 
-        let buffer = UnsafeBufferPointer(start: p, count: 3*count)
-        let s = stride(from: buffer.startIndex, to: buffer.endIndex, by: 3)
-        let t = s.lazy.map { (Int64(buffer[$0]), Int64(buffer[$0+1]), Int64(buffer[$0+2])) }
-        
-        let ptr = readBuffer + (4*3*count)
-        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
-        // TODO: verify crc
-
-        return AnyIterator(t.makeIterator())
-    }
-
-    func generateBitmapTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S) throws -> AnyIterator<(Int64, Int64, Int64)> where S.Element == Int64 {
-        let order = self.triplesMetadata.ordering
-        
-        let y = data.arrayY.makeIterator()
-        let z = data.arrayZ.makeIterator()
-        let pairs = generatePairs(elements: gen.makeIterator(), index: data.bitmapY, array: y)
-        let triplets = generatePairs(elements: pairs, index: data.bitmapZ, array: z)
-
-        switch order {
-        case .spo:
-            let triples = triplets.lazy.map { ($0.0.0, $0.0.1, $0.1) }
-            return AnyIterator(triples.makeIterator())
-        case .sop:
-            let triples = triplets.lazy.map { ($0.0.0, $0.1, $0.0.1) }
-            return AnyIterator(triples.makeIterator())
-        case .pso:
-            let triples = triplets.lazy.map { ($0.0.1, $0.0.0, $0.1) }
-            return AnyIterator(triples.makeIterator())
-        case .pos:
-            let triples = triplets.lazy.map { ($0.1, $0.0.0, $0.0.0) }
-            return AnyIterator(triples.makeIterator())
-        case .osp:
-            let triples = triplets.lazy.map { ($0.0.1, $0.1, $0.0.0) }
-            return AnyIterator(triples.makeIterator())
-        case .ops:
-            let triples = triplets.lazy.map { ($0.1, $0.0.1, $0.0.0) }
-            return AnyIterator(triples.makeIterator())
-        case .unknown:
-            throw HDTError.error("Cannot parse bitmap triples block with unknown ordering")
-        }
-    }
-    
-    func readTriples(at offset: off_t, dictionary: HDTDictionaryProtocol) throws -> AnyIterator<(Int64, Int64, Int64)> {
+    func readIDTriples(at offset: off_t, dictionary: HDTDictionaryProtocol, restrict restriction: IDRestriction) throws -> AnyIterator<IDTriple> {
         switch self.triplesMetadata.format {
         case .bitmap:
-            let (data, _) = try readTriplesBitmap(at: self.triplesMetadata.offset)
             let ids = dictionary.idSequence(for: .subject) // TODO: this should be based on the first position in the HDT ordering
-            let triples = try generateBitmapTriples(data: data, topLevelIDs: ids)
+            let t = try HDTBitmapTriples(metadata: triplesMetadata, size: size, ptr: mmappedPtr)
+            let triples = try t.idTriples(ids: ids, restrict: restriction)
             return triples
         case .list:
-            guard let count = self.triplesMetadata.count else {
-                throw HDTError.error("Cannot parse list triples because no numTriples property value was found")
-            }
-            let triples = try generateListTriples(at: self.triplesMetadata.offset, triples: count)
-            return triples
+            let t = try HDTListTriples(metadata: triplesMetadata, size: size, ptr: mmappedPtr)
+            return try t.idTriples(restrict: restriction)
         }
     }
-    
-    func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol>(elements: I, index _bits: J, array: C) -> AnyIterator<(I.Element, C.Element)> where J.Element == Int {
-        var bits = PeekableIterator(generator: _bits)
-        var currentIndex = 0
-        var elements = elements
-        var arrayIterator = array
 
-        var buffer = [(I.Element, C.Element)]()
-        let gen = { () -> (I.Element, C.Element)? in
-            repeat {
-                if !buffer.isEmpty {
-                    return buffer.remove(at: 0)
-                }
-                guard let next = elements.next() else {
-                    return nil
-                }
-                
-                // let k = count the number of elements in $index up to (and including) the next 1
-                var k = 0
-                repeat {
-                    k += 1
-                    currentIndex += 1
-                    
-                    if let next = bits.peek() {
-                        if next == (currentIndex - 1) {
-                            _ = bits.next()
-                            break
-                        }
-                    } else {
-                        break
-                    }
-                } while true
-
-                for _ in 0..<k {
-                    if let item = arrayIterator.next() {
-                        buffer.append((next, item))
-                    }
-                }
-            } while true
-        }
-        return AnyIterator(gen)
-    }
-    
-    func readTriplesBitmap(at offset: off_t) throws -> (BitmapTriplesData, Int64) {
-        let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
-        let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
-        let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
-        let (arrayZ, azLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength + ayLength)
-        
-        let length = byLength + bzLength + ayLength + azLength
-        let data = BitmapTriplesData(bitmapY: bitmapY, bitmapZ: bitmapZ, arrayY: arrayY, arrayZ: arrayZ)
-        return (data, length)
-    }
-    
     func readDictionary(at offset: off_t) throws -> HDTDictionaryProtocol {
         switch dictionaryMetadata.type {
         case .fourPart:
@@ -207,3 +66,121 @@ public class HDT {
     }
 }
 
+
+public extension HDT {
+    private class HDTTriplesIterator<I: IteratorProtocol>: IteratorProtocol where I.Element == Triple {
+        typealias Element = Triple
+        
+        var hdt: HDT
+        var triples: I
+        
+        init(hdt: HDT, triples: I) {
+            self.hdt = hdt
+            self.triples = triples
+        }
+        
+        func next() -> Triple? {
+            return triples.next()
+        }
+    }
+
+    public func triples() throws -> AnyIterator<Triple> {
+        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        let tripleIDs = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: (nil, nil, nil))
+        let triples = tripleIDs.lazy.compactMap { self.mapToTriple(ids: $0, from: dictionary) }
+        
+        let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
+        return AnyIterator(i)
+    }
+    
+    private func mapToTriple(ids t: IDTriple, from dictionary: HDTDictionaryProtocol) -> Triple? {
+        do {
+            guard let s = try dictionary.term(for: t.0, position: .subject) else {
+                return nil
+            }
+            guard let p = try dictionary.term(for: t.1, position: .predicate) else {
+                return nil
+            }
+            guard let o = try dictionary.term(for: t.2, position: .object) else {
+                return nil
+            }
+            return Triple(subject: s, predicate: p, object: o)
+        } catch let error {
+            warn(">>> error mapping IDs to triple: \(error)")
+            return nil
+        }
+    }
+    
+    private func triples(dictionary: HDTDictionaryProtocol, restrict restriction: IDRestriction) throws -> AnyIterator<Triple> {
+        let order = self.triplesMetadata.ordering
+        guard case .spo = order else {
+            throw HDTError.error("TriplePattern matching on non-SPO ordered triples is unimplemented") // TODO
+        }
+        let tripleIDs = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: restriction)
+        let triples = tripleIDs.lazy
+            .filter {
+                if let s = restriction.0, s != $0.0 {
+                    return false
+                }
+                if let p = restriction.1, p != $0.1 {
+                    return false
+                }
+                if let o = restriction.2, o != $0.2 {
+                    return false
+                }
+                return true
+            }
+            .compactMap { self.mapToTriple(ids: $0, from: dictionary) }
+
+        let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
+        return AnyIterator(i)
+    }
+    
+    public func triples(matching tp: TriplePattern) throws -> AnyIterator<Triple> {
+        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        
+        var restrictions = [LookupPosition:Int64]()
+        var variables = [LookupPosition:String]()
+        
+        let pairs = zip([LookupPosition.subject, .predicate, .object], tp)
+        for  (pos, node) in pairs {
+            switch node {
+            case .bound(let term):
+                if let id = try dictionary.id(for: term, position: pos) {
+                    restrictions[pos] = id
+                } else {
+                    return AnyIterator([].makeIterator())
+                }
+            case .variable(let name, binding: _):
+                variables[pos] = name
+            }
+        }
+
+        let order = self.triplesMetadata.ordering
+        guard case .spo = order else {
+            throw HDTError.error("TriplePattern matching on non-SPO ordered triples is unimplemented") // TODO
+        }
+        
+        let boundPositions = Set(restrictions.keys)
+        switch boundPositions {
+        case [.subject]:
+            let x = restrictions[.subject]!
+            return try triples(dictionary: dictionary, restrict: (x, nil, nil))
+        case [.subject, .predicate]:
+            let x = restrictions[.subject]!
+            let y = restrictions[.predicate]!
+            return try triples(dictionary: dictionary, restrict: (x, y, nil))
+        case [.subject, .predicate, .object]:
+            let x = restrictions[.subject]!
+            let y = restrictions[.predicate]!
+            let z = restrictions[.object]!
+            return try triples(dictionary: dictionary, restrict: (x, y, z))
+        case []:
+            return try triples()
+        default:
+            fatalError("TriplePattern matching cannot be performed on a pattern that requires an index other than \(order)")
+        }
+        
+        fatalError("unimplemented")
+    }
+}

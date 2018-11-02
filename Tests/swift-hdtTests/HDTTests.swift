@@ -72,7 +72,7 @@ final class HDTTests: XCTestCase {
     func testHDTTriplesParse() throws {
         let hdt = try p.parse()
         
-        let expectedPrefix : [(Int64, Int64, Int64)] = [
+        let expectedPrefix : [HDT.IDTriple] = [
             (1, 90, 13304),
             (1, 101, 19384),
             (1, 111, 75817),
@@ -83,7 +83,7 @@ final class HDTTests: XCTestCase {
             ]
 
         let dictionary = try hdt.readDictionary(at: 1819)
-        let triples : AnyIterator<(Int64, Int64, Int64)> = try hdt.readTriples(at: 5159548, dictionary: dictionary)
+        let triples : AnyIterator<HDT.IDTriple> = try hdt.readIDTriples(at: 5159548, dictionary: dictionary, restrict: (nil, nil, nil))
         let gotPrefix = Array(triples.prefix(expectedPrefix.count))
         for (g, e) in zip(gotPrefix, expectedPrefix) {
             print("got triple: \(g)")

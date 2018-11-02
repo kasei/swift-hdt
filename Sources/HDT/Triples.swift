@@ -1,4 +1,8 @@
 import Foundation
+import os.log
+import os.signpost
+
+public typealias IDRestriction = (HDT.TermID?, HDT.TermID?, HDT.TermID?)
 
 struct BitmapTriplesData {
     var bitmapY : BlockIterator<Int>
@@ -6,7 +10,6 @@ struct BitmapTriplesData {
     var arrayY : AnySequence<Int64>
     var arrayZ : AnySequence<Int64>
 }
-
 
 public enum TripleOrdering: Int, CustomStringConvertible {
     case unknown = 0
@@ -23,7 +26,7 @@ public enum TripleOrdering: Int, CustomStringConvertible {
     }
 }
 
-struct TriplesMetadata {
+public struct TriplesMetadata {
     enum Format {
         case bitmap
         case list
@@ -33,4 +36,175 @@ struct TriplesMetadata {
     var ordering: TripleOrdering
     var count: Int?
     var offset: off_t
+}
+
+func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol>(elements: I, index _bits: J, array: C, startingElementOffset: Int = 0, verbose: Bool = false) -> AnyIterator<(I.Element, C.Element)> where J.Element == Int {
+    var bits = PeekableIterator(generator: _bits)
+    var currentIndex = 0
+    var elements = elements
+    var arrayIterator = array
+    
+    var buffer = [(I.Element, C.Element)]()
+    let gen = { () -> (I.Element, C.Element)? in
+        repeat {
+            if !buffer.isEmpty {
+                return buffer.remove(at: 0)
+            }
+            guard let next = elements.next() else {
+                return nil
+            }
+            
+            // let k = count the number of elements in $index up to (and including) the next 1
+            var k = 0
+            repeat {
+                k += 1
+                currentIndex += 1
+                
+                if let next = bits.peek() {
+                    if next == (currentIndex - 1) {
+                        _ = bits.next()
+                        break
+                    }
+                } else {
+                    break
+                }
+            } while true
+            
+            for _ in 0..<k {
+                if let item = arrayIterator.next() {
+                    buffer.append((next, item))
+                }
+            }
+        } while true
+    }
+    return AnyIterator(gen)
+}
+
+public protocol HDTTriples {
+    var metadata: TriplesMetadata { get }
+    init(metadata: TriplesMetadata, size: Int, ptr: UnsafeMutableRawPointer) throws
+}
+
+public final class HDTListTriples: HDTTriples {
+    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+    
+    var size: Int
+    var mmappedPtr: UnsafeMutableRawPointer
+    public var metadata: TriplesMetadata
+
+    public init(metadata: TriplesMetadata, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer) throws {
+        self.metadata = metadata
+        self.mmappedPtr = mmappedPtr
+        self.size = size
+    }
+
+    func generateListTriples(at offset: off_t, triples count: Int) throws -> AnyIterator<HDT.IDTriple> {
+        // TODO: move this code to its own class HDTListTriples in Triples.swift
+        let readBuffer = mmappedPtr + Int(offset)
+        let p = readBuffer.assumingMemoryBound(to: UInt32.self)
+        
+        let buffer = UnsafeBufferPointer(start: p, count: 3*count)
+        let s = stride(from: buffer.startIndex, to: buffer.endIndex, by: 3)
+        let t = s.lazy.map { (Int64(buffer[$0]), Int64(buffer[$0+1]), Int64(buffer[$0+2])) }
+        
+        let ptr = readBuffer + (4*3*count)
+        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+        // TODO: verify crc
+        
+        return AnyIterator(t.makeIterator())
+    }
+
+    public func idTriples(restrict restriction: IDRestriction) throws -> AnyIterator<HDT.IDTriple> {
+        guard let count = metadata.count else {
+            throw HDTError.error("Cannot parse list triples because no numTriples property value was found")
+        }
+        return try generateListTriples(at: metadata.offset, triples: count)
+    }
+}
+
+public final class HDTBitmapTriples: HDTTriples {
+    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+    
+    var size: Int
+    var mmappedPtr: UnsafeMutableRawPointer
+    public var metadata: TriplesMetadata
+    
+    public init(metadata: TriplesMetadata, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer) throws {
+        self.metadata = metadata
+        self.mmappedPtr = mmappedPtr
+        self.size = size
+    }
+    
+    func readTriplesBitmap() throws -> (BitmapTriplesData, Int64) {
+        let offset = metadata.offset
+        let (bitmapY, byLength) = try readBitmap(from: mmappedPtr, at: offset)
+        let (bitmapZ, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
+        let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
+        let (arrayZ, azLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength + ayLength)
+        
+        let length = byLength + bzLength + ayLength + azLength
+        let data = BitmapTriplesData(bitmapY: bitmapY, bitmapZ: bitmapZ, arrayY: arrayY, arrayZ: arrayZ)
+        return (data, length)
+    }
+    
+    func generateBitmapTriples<S: Sequence>(data: BitmapTriplesData, topLevelIDs gen: S, restrict restriction: IDRestriction) throws -> AnyIterator<HDT.IDTriple> where S.Element == Int64 {
+        let order = metadata.ordering
+        
+        let x = AnyIterator(gen.makeIterator())
+        
+        // OPTIMIZE: skip data if there are restrictions
+        let y = data.arrayY.makeIterator()
+        let bitmapY = data.bitmapY
+        let z = data.arrayZ.makeIterator()
+        let bitmapZ = data.bitmapZ
+        
+        let pairs = generatePairs(elements: x, index: bitmapY, array: y)
+        let triplets = generatePairs(elements: pairs, index: bitmapZ, array: z)
+        
+        
+        var triplesIterator : AnyIterator<HDT.IDTriple>
+        switch order {
+        case .spo:
+            let triples = triplets.lazy.map { ($0.0.0, $0.0.1, $0.1) }
+            triplesIterator = AnyIterator(triples.makeIterator())
+        case .sop:
+            let triples = triplets.lazy.map { ($0.0.0, $0.1, $0.0.1) }
+            triplesIterator = AnyIterator(triples.makeIterator())
+        case .pso:
+            let triples = triplets.lazy.map { ($0.0.1, $0.0.0, $0.1) }
+            triplesIterator = AnyIterator(triples.makeIterator())
+        case .pos:
+            let triples = triplets.lazy.map { ($0.1, $0.0.0, $0.0.0) }
+            triplesIterator = AnyIterator(triples.makeIterator())
+        case .osp:
+            let triples = triplets.lazy.map { ($0.0.1, $0.1, $0.0.0) }
+            triplesIterator = AnyIterator(triples.makeIterator())
+        case .ops:
+            let triples = triplets.lazy.map { ($0.1, $0.0.1, $0.0.0) }
+            triplesIterator = AnyIterator(triples.makeIterator())
+        case .unknown:
+            throw HDTError.error("Cannot parse bitmap triples block with unknown ordering")
+        }
+        
+        //        if let xr = xRestrictions {
+        //            print("applying post-restriction on the X values: \(xr)")
+        //            triplesIterator = triplesIterator.prefix { $0.0 == xr }.makeIterator()
+        //            if let yr = yRestrictions {
+        //                print("applying post-restriction on the Y values: \(yr)")
+        //                triplesIterator = triplesIterator.prefix { $0.1 == yr }.makeIterator()
+        //                if let zr = zRestrictions {
+        //                    print("applying post-restriction on the Z values: \(zr)")
+        //                    triplesIterator = triplesIterator.prefix { $0.2 == zr }.makeIterator()
+        //                }
+        //            }
+        //        }
+        
+        return triplesIterator
+    }
+    
+    public func idTriples<S: Sequence>(ids: S, restrict restriction: IDRestriction) throws -> AnyIterator<HDT.IDTriple> where S.Element == HDT.TermID {
+        let (data, _) = try self.readTriplesBitmap()
+        let t = try self.generateBitmapTriples(data: data, topLevelIDs: ids, restrict: restriction)
+        return t
+    }
 }

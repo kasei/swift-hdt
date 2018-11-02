@@ -27,8 +27,13 @@ do {
     os_signpost(.begin, log: log, name: "Enumerating Triples", "Begin")
 
     let triples = try hdt.triples()
+    
     let ser : RDFSerializer = useTurtle ? TurtleSerializer() : NTriplesSerializer()
     try ser.serialize(triples, to: &stdout)
+    
+//    var s = ""
+//    try ser.serialize(triples, to: &s)
+
 //    for (i, t) in triples.enumerated() {
 //        if i % 25_000 == 0 {
 //            os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)

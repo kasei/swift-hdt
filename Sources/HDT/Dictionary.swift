@@ -204,8 +204,12 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
                 if position != .object {
                     updateCache(for: l, dictionary: dictionary)
                 }
-                let term = dictionary[id]
-                return term
+                if let term = dictionary[id] {
+                    return term
+                } else {
+                    warn("*** Failed to lookup term for ID \(id)")
+                    return nil
+                }
             } catch let error {
                 print("\(error)")
                 return nil
@@ -218,8 +222,13 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             return Term(value: String(s.dropFirst(2)), type: .blank)
         } else if s.hasPrefix("\"") {
             var term: Term? = nil
-            _ = try rdfParser.parse(string: "<x:> <x:> \(s) .") { (_, _, o) in
-                term = o
+            do {
+                _ = try rdfParser.parse(string: "<x:> <x:> \(s) .") { (_, _, o) in
+                    term = o
+                }
+            } catch let error {
+                //                warn(">>> failed to parse string as a term: \(s)")
+                throw error
             }
             guard let t = term else {
                 throw HDTError.error("Failed to parse literal value")
@@ -255,11 +264,15 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let charsBufferPtr = UnsafeBufferPointer(start: charsPtr, count: commonPrefix.utf8.count)
         var commonPrefixChars = Array(charsBufferPtr)
         
-        let t = try self.term(from: commonPrefix)
         let newID = nextID
         nextID += 1
         //            warn("    - TERM: \(newID): \(t)")
-        dictionary[newID] = t
+        do {
+            let t = try self.term(from: commonPrefix)
+            dictionary[newID] = t
+        } catch {
+            // TODO: warn of bad term data in the dictionary
+        }
         if newID == id {
             return dictionary
         } else if newID >= blockMaxID {
@@ -282,11 +295,15 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             
             commonPrefixChars.replaceSubrange(Int(sharedPrefixLength)..., with: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
             commonPrefix = String(cString: commonPrefixChars)
-            let t = try self.term(from: commonPrefix)
             let newID = nextID
             nextID += 1
             //            warn("    - TERM: \(newID): \(t)")
-            dictionary[newID] = t
+            do {
+                let t = try self.term(from: commonPrefix)
+                dictionary[newID] = t
+            } catch {
+                // TODO: warn of bad term data in the dictionary
+            }
             if newID == id {
                 return dictionary
             } else if newID >= blockMaxID {

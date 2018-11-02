@@ -61,7 +61,7 @@ struct StderrOutputStream: TextOutputStream {
 }
 var errStream = StderrOutputStream.stream
 func warn(_ item: Any) {
-    if false {
+    if true {
         print(item, to: &errStream)
     }
 }
