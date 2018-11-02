@@ -28,9 +28,9 @@ final class HDTTriplePatternMatching: XCTestCase {
             let triplesIterator = try hdt.triples(matching: tp)
             let triples = Array(triplesIterator)
             XCTAssertEqual(triples.count, 4)
-            for t in triples {
-                print(t)
-            }
+//            for t in triples {
+//                print(t)
+//            }
         } catch let error {
             XCTFail(String(describing: error))
         }
@@ -47,9 +47,9 @@ final class HDTTriplePatternMatching: XCTestCase {
             let triplesIterator = try hdt.triples(matching: tp)
             let triples = Array(triplesIterator)
             XCTAssertEqual(triples.count, 11)
-            for t in triples {
-                print(t)
-            }
+//            for t in triples {
+//                print(t)
+//            }
         } catch let error {
             XCTFail(String(describing: error))
         }
