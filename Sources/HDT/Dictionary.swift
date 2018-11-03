@@ -240,10 +240,10 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         if s.contains("\\") {
             let input = s as NSString
             let unescaped = input.mutableCopy() as! NSMutableString
-            CFStringTransform(unescaped, nil, "Any-Hex/Java" as NSString, true)
+            CFStringTransform(unescaped, nil, "Any-Hex/C" as NSString, true)
             s = unescaped as String
         }
-
+        
         if s.hasPrefix("_") { // blank nodes start _:
             return Term(value: String(s.dropFirst(2)), type: .blank)
         } else if s.hasPrefix("\"") {
