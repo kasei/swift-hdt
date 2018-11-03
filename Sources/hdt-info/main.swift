@@ -1,6 +1,5 @@
 import SPARQLSyntax
 import Foundation
-import Kineo
 import HDT
 
 let filename = CommandLine.arguments.dropFirst().first!

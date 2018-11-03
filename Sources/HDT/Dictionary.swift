@@ -236,12 +236,19 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     }
 
     private func term(from s: String) throws -> Term {
+        var s = s
+        if s.contains("\\") {
+            let input = s as NSString
+            let unescaped = input.mutableCopy() as! NSMutableString
+            CFStringTransform(unescaped, nil, "Any-Hex/Java" as NSString, true)
+            s = unescaped as String
+        }
+
         if s.hasPrefix("_") { // blank nodes start _:
             return Term(value: String(s.dropFirst(2)), type: .blank)
         } else if s.hasPrefix("\"") {
             let i = s.lastIndex(of: "\"")!
             let value = s.dropFirst().prefix(upTo: i)
-            
             let suffix = s[i...].dropFirst()
             if suffix.hasPrefix("^^<") {
                 let dtIRI = String(suffix.dropFirst(3).dropLast())
