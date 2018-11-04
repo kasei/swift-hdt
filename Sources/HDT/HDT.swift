@@ -156,14 +156,25 @@ public extension HDT {
         
         var hdt: HDT
         var triples: I
+        var count: Int
         
         init(hdt: HDT, triples: I) {
             self.hdt = hdt
             self.triples = triples
+            self.count = 0
         }
         
+//        deinit {
+//            warn("HDTTriplesIterator generated \(count) triples")
+//        }
+        
         func next() -> Triple? {
-            return triples.next()
+            if let t = triples.next() {
+                count += 1
+                return t
+            } else {
+                return nil
+            }
         }
     }
 
@@ -184,12 +195,15 @@ public extension HDT {
     private func mapToTriple(ids t: IDTriple, from dictionary: HDTDictionaryProtocol) -> Triple? {
         do {
             guard let s = try dictionary.term(for: t.0, position: .subject) else {
+                warn("failed to load term for subject \(t.0)")
                 return nil
             }
             guard let p = try dictionary.term(for: t.1, position: .predicate) else {
+                warn("failed to load term for predicate \(t.1)")
                 return nil
             }
             guard let o = try dictionary.term(for: t.2, position: .object) else {
+                warn("failed to load term for object \(t.2)")
                 return nil
             }
             return Triple(subject: s, predicate: p, object: o)

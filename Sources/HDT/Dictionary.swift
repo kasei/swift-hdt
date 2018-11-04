@@ -20,7 +20,7 @@ public struct DictionaryMetadata: CustomDebugStringConvertible {
         var s = ""
         print(controlInformation, to: &s)
         print("offset: \(offset)", to: &s)
-        print("type: .\(type)")
+        print("type: .\(type)", to: &s)
         print("shared offset: \(sharedOffset)", to: &s)
         print("subjects offset: \(subjectsOffset)", to: &s)
         print("predicates offset: \(predicatesOffset)", to: &s)
@@ -169,15 +169,15 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         return AnySequence { () -> AnyIterator<Int64> in
             switch position {
             case .subject:
-                let range = Int64(1)..<Int64(self.shared.count + self.subjects.count)
+                let range = Int64(1)...Int64(self.shared.count + self.subjects.count)
                 return AnyIterator(range.makeIterator())
             case .predicate:
-                let range = Int64(1)..<Int64(self.predicates.count)
+                let range = Int64(1)...Int64(self.predicates.count)
                 return AnyIterator(range.makeIterator())
             case .object:
-                let range1 = Int64(1)..<Int64(self.shared.count)
+                let range1 = Int64(1)...Int64(self.shared.count)
                 let min = self.shared.count + self.subjects.count + 1
-                let range2 = Int64(min)..<Int64(min + self.objects.count)
+                let range2 = Int64(min)...Int64(min + self.objects.count)
                 let i = ConcatenateIterator(range1.makeIterator(), range2.makeIterator())
                 return AnyIterator(i)
             }
@@ -238,6 +238,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     private func term(from s: String) throws -> Term {
         var s = s
         if s.contains("\\") {
+            // unescape \u and \U hex codes
             let input = s as NSString
             let unescaped = input.mutableCopy() as! NSMutableString
             CFStringTransform(unescaped, nil, "Any-Hex/C" as NSString, true)
@@ -246,7 +247,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         
         if s.hasPrefix("_") { // blank nodes start _:
             return Term(value: String(s.dropFirst(2)), type: .blank)
-        } else if s.hasPrefix("\"") {
+        } else if s.hasPrefix("\"") { // literals start with a double quote, end with the last double quote, and have optional datatype or language tags
             let i = s.lastIndex(of: "\"")!
             let value = s.dropFirst().prefix(upTo: i)
             let suffix = s[i...].dropFirst()
@@ -260,7 +261,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             } else {
                 return Term(string: String(value))
             }
-        } else {
+        } else { // anything else is an IRI
             return Term(iri: s)
         }
     }

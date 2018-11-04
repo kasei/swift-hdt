@@ -86,6 +86,12 @@ func generatePairs<I: IteratorProtocol, J: IteratorProtocol, C: IteratorProtocol
             for _ in 0..<k {
                 if let item = arrayIterator.next() {
                     buffer.append((next, item))
+                } else {
+                    if buffer.isEmpty {
+                        return nil
+                    } else {
+                        break
+                    }
                 }
             }
         } while true
@@ -141,9 +147,16 @@ extension HDTListTriples: CustomDebugStringConvertible {
         var s = ""
         print(metadata, terminator: "", to: &s)
         do {
-            let (count, _) = try idTriples(restrict: (nil, nil, nil))
+            let (count, i) = try idTriples(restrict: (nil, nil, nil))
             print("parsed triple count: \(count)", to: &s)
-        } catch {}
+            var actual = 0
+            for _ in IteratorSequence(i) {
+                actual += 1
+            }
+            print("actual ID triple count: \(actual)", to: &s)
+        } catch {
+            warn(error)
+        }
         return s
     }
 }
@@ -186,7 +199,6 @@ public final class HDTBitmapTriples: HDTTriples {
         
         let pairs = generatePairs(elements: x, index: bitmapY, array: y)
         let triplets = generatePairs(elements: pairs, index: bitmapZ, array: z)
-        
         
         var triplesIterator : AnyIterator<HDT.IDTriple>
         switch order {
@@ -241,9 +253,16 @@ extension HDTBitmapTriples: CustomDebugStringConvertible {
         print(metadata, terminator: "", to: &s)
         do {
             let ids = (0...).lazy.map { HDT.TermID($0) }
-            let (count, _) = try self.idTriples(ids: ids, restrict: (nil, nil, nil))
-            print("parsed triple count: \(count)", to: &s)
-        } catch {}
+            let (count, i) = try self.idTriples(ids: ids, restrict: (nil, nil, nil))
+            print("z-bitmap triple count: \(count)", to: &s)
+            var actual = 0
+            for _ in IteratorSequence(i) {
+                actual += 1
+            }
+            print("actual triple count: \(actual)", to: &s)
+        } catch {
+            warn(error)
+        }
         return s
     }
 }
