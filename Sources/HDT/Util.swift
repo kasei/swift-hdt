@@ -1,7 +1,9 @@
 import Foundation
+import os.log
+import os.signpost
 
 extension Data {
-    public func getField(_ index: Int, width bitsField: Int) -> Int {
+    public func getField(_ index: Int, width bitsField: Int) -> Int64 {
         let type = UInt32.self
         let bitWidth = type.bitWidth
         let bitPos = index * bitsField
@@ -9,45 +11,80 @@ extension Data {
         let j = bitPos % bitWidth
         if (j+bitsField) <= bitWidth {
             let d : UInt32 = self.withUnsafeBytes { $0[i] }
-            return Int((d << (bitWidth-j-bitsField)) >> (bitWidth-bitsField))
+            return (Int64(d) << (bitWidth-j-bitsField)) >> (bitWidth-bitsField)
         } else {
-            return self.withUnsafeBytes { (p : UnsafePointer<UInt32>) -> Int in
+            return self.withUnsafeBytes { (p : UnsafePointer<UInt32>) -> Int64 in
                 let _r = p[i]
                 let _d = p[i+1]
-                let r = Int(_r >> j)
-                let d = Int(_d << ((bitWidth<<1) - j - bitsField))
+                let r = Int64(_r) >> j
+                let d = Int64(_d) << ((bitWidth<<1) - j - bitsField)
                 return r | (d >> (bitWidth-bitsField))
             }
         }
     }
 
-    public func getFields(width bitsField: Int, count: Int) -> AnySequence<Int64> {
-        let type = UInt32.self
-        let bitWidth = type.bitWidth
-        
-        return AnySequence { () -> AnyIterator<Int64> in
+    public func getFieldsImmediate(width valueWidth: Int, count: Int) -> [Int64] {
+        let bitWidth64 = UInt64.self.bitWidth
+
+        var values = [Int64](reserveCapacity: count)
+        var index = 0
+        let baseMask64 = ((UInt64(1) << (valueWidth)) - 1)
+        let splitShiftLeftBase = (bitWidth64<<1) - valueWidth
+        let splitShiftRight = bitWidth64-valueWidth
+        repeat {
+            let bitPos = index * valueWidth
+            index += 1
+            
+            let (offset_u64, intraValueBitOffset64) = bitPos.quotientAndRemainder(dividingBy: bitWidth64)
+            if (intraValueBitOffset64+valueWidth) <= bitWidth64 {
+                let d : UInt64 = self.withUnsafeBytes { $0[offset_u64] }
+                let mask = baseMask64 << intraValueBitOffset64
+                let v1 = (UInt64(d) & mask) >> intraValueBitOffset64
+                values.append(Int64(v1))
+            } else {
+                // the value spans multiple u32s
+                let v1 = self.withUnsafeBytes { (p : UnsafePointer<UInt64>) -> Int64 in
+                    let r = p[offset_u64] >> intraValueBitOffset64
+                    let d = p[offset_u64+1] << (splitShiftLeftBase - intraValueBitOffset64)
+                    let v = r | (d >> splitShiftRight)
+                    return Int64(v)
+                }
+                values.append(Int64(v1))
+            }
+        } while index < count
+        return values
+    }
+    
+    public func getFields(width valueWidth: Int, count: Int) -> AnySequence<Int64> {
+        let bitWidth64 = UInt64.self.bitWidth
+
+        return AnySequence { () -> BlockIterator<Int64> in
             var index = 0
-            return AnyIterator {
+            let baseMask64 = ((UInt64(1) << (valueWidth)) - 1)
+            let splitShiftLeftBase = (bitWidth64<<1) - valueWidth
+            let splitShiftRight = bitWidth64-valueWidth
+            return BlockIterator {
                 guard index < count else {
                     return nil
                 }
-                let bitPos = index * bitsField
+                let bitPos = index * valueWidth
                 index += 1
-                let i = bitPos / bitWidth
-                let j = bitPos % bitWidth
-                if (j+bitsField) <= bitWidth {
-                    let d : UInt32 = self.withUnsafeBytes { $0[i] }
-                    let v = Int((d << (bitWidth-j-bitsField)) >> (bitWidth-bitsField))
-                    return Int64(v)
+                
+                let (offset_u64, intraValueBitOffset64) = bitPos.quotientAndRemainder(dividingBy: bitWidth64)
+                if (intraValueBitOffset64+valueWidth) <= bitWidth64 {
+                    let d : UInt64 = self.withUnsafeBytes { $0[offset_u64] }
+                    let mask = baseMask64 << intraValueBitOffset64
+                    let v1 = (UInt64(d) & mask) >> intraValueBitOffset64
+                    return [Int64(v1)]
                 } else {
-                    let v = self.withUnsafeBytes { (p : UnsafePointer<UInt32>) -> Int in
-                        let _r = p[i]
-                        let _d = p[i+1]
-                        let r = Int(_r >> j)
-                        let d = Int(_d << ((bitWidth<<1) - j - bitsField))
-                        return r | (d >> (bitWidth-bitsField))
+                    // the value spans multiple u32s
+                    let v1 = self.withUnsafeBytes { (p : UnsafePointer<UInt64>) -> Int64 in
+                        let r = p[offset_u64] >> intraValueBitOffset64
+                        let d = p[offset_u64+1] << (splitShiftLeftBase - intraValueBitOffset64)
+                        let v = r | (d >> splitShiftRight)
+                        return Int64(v)
                     }
-                    return Int64(v)
+                    return [v1]
                 }
             }
         }
@@ -91,11 +128,11 @@ func readVByte(_ ptr : inout UnsafeMutableRawPointer) -> UInt {
 func readData(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, length: Int) throws -> Data {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
-    let data = Data(bytes: readBuffer, count: length)
+    let data = Data(bytesNoCopy: readBuffer, count: length, deallocator: .none)
     return data
 }
 
-func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, assertType: UInt8? = nil) throws -> (AnySequence<Int64>, Int64) {
+func readSequenceLazy(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, assertType: UInt8? = nil) throws -> (AnySequence<Int64>, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
     
@@ -138,6 +175,48 @@ func readSequence(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, as
     return (seq, length)
 }
 
+func readSequenceImmediate(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t, assertType: UInt8? = nil) throws -> ([Int64], Int64) {
+    var readBuffer = mmappedPtr
+    readBuffer += Int(offset)
+    
+    let p = readBuffer.assumingMemoryBound(to: UInt8.self)
+    let typeLength: Int
+    if let assertType = assertType {
+        let type = p[0]
+        typeLength = 1
+        guard type == assertType else {
+            throw HDTError.error("Invalid dictionary LogSequence2 type (\(type)) at offset \(offset)")
+        }
+    } else {
+        typeLength = 0
+    }
+    
+    let bits = Int(p[typeLength])
+    let bitsLength = 1
+    
+    var ptr = readBuffer + typeLength + bitsLength
+    let entriesCount = Int(readVByte(&ptr))
+    
+    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+    // TODO: verify crc
+    ptr += 1
+    
+    let arraySize = (bits * entriesCount + 7) / 8
+    let sequenceDataOffset = Int64(readBuffer.distance(to: ptr))
+    
+    let sequenceData = try readData(from: mmappedPtr, at: offset + sequenceDataOffset, length: arraySize)
+    ptr += arraySize
+    
+    let values = sequenceData.getFieldsImmediate(width: bits, count: entriesCount)
+    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+    // TODO: verify crc
+    ptr += 4
+    
+    let length = Int64(readBuffer.distance(to: ptr))
+    
+    return (values, length)
+}
+
 func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throws -> (BlockIterator<Int>, Int64, Int64) {
     var readBuffer = mmappedPtr
     readBuffer += Int(offset)
@@ -157,7 +236,8 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     // TODO: verify crc
     ptr += 1
     
-    let data = Data(bytes: ptr, count: bytes)
+    let data = Data(bytesNoCopy: ptr, count: bytes, deallocator: .none)
+//    let data = Data(bytes: ptr, count: bytes)
 
     var shift = 0
     let blockIterator = BlockIterator { () -> [Int]? in
@@ -208,7 +288,7 @@ func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throw
     
     switch type {
     case 1:
-        let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset, assertType: 1)
+        let (blocks, blocksLength) = try readSequenceLazy(from: mmappedPtr, at: offset, assertType: 1)
         return (blocks, blocksLength)
     case 2:
         fatalError("TODO: Array read unimplemented: uint32")

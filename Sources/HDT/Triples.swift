@@ -149,11 +149,11 @@ extension HDTListTriples: CustomDebugStringConvertible {
         do {
             let (count, i) = try idTriples(restrict: (nil, nil, nil))
             print("parsed triple count: \(count)", to: &s)
-            var actual = 0
-            for _ in IteratorSequence(i) {
-                actual += 1
-            }
-            print("actual ID triple count: \(actual)", to: &s)
+//            var actual = 0
+//            for _ in IteratorSequence(i) {
+//                actual += 1
+//            }
+//            print("actual ID triple count: \(actual)", to: &s)
         } catch {
             warn(error)
         }
@@ -255,11 +255,11 @@ extension HDTBitmapTriples: CustomDebugStringConvertible {
             let ids = (0...).lazy.map { HDT.TermID($0) }
             let (count, i) = try self.idTriples(ids: ids, restrict: (nil, nil, nil))
             print("z-bitmap triple count: \(count)", to: &s)
-            var actual = 0
-            for _ in IteratorSequence(i) {
-                actual += 1
-            }
-            print("actual triple count: \(actual)", to: &s)
+//            var actual = 0
+//            for _ in IteratorSequence(i) {
+//                actual += 1
+//            }
+//            print("actual triple count: \(actual)", to: &s)
         } catch {
             warn(error)
         }

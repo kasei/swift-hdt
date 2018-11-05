@@ -55,12 +55,12 @@ public class HDTParser {
         offset += headerLength
         os_signpost(.end, log: log, name: "Parsing Header", "Finished")
         
-        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Finished")
+        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Begin")
         let (dictionary, dictionaryLength) = try parseDictionary(at: offset)
         offset += dictionaryLength
         os_signpost(.end, log: log, name: "Parsing Dictionary", "Finished")
         
-        os_signpost(.begin, log: log, name: "Parsing Triples", "Finished")
+        os_signpost(.begin, log: log, name: "Parsing Triples", "Begin")
         let triples = try parseTriples(at: offset)
         os_signpost(.end, log: log, name: "Parsing Triples", "Finished")
         
@@ -98,7 +98,7 @@ public class HDTParser {
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
         
-        let (_, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
+        let (_, blocksLength) = try readSequenceLazy(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
         ptr += Int(blocksLength)
 
         let dataLength = Int64(bytesCount)
@@ -176,7 +176,7 @@ public class HDTParser {
         
         let size = headerLength
         let readBuffer = mmappedPtr + Int(offset) + Int(ciLength)
-        let d = Data(bytes: readBuffer, count: size)
+        let d = Data(bytesNoCopy: readBuffer, count: size, deallocator: .none)
         guard let ntriples = String(data: d, encoding: .utf8) else {
             throw HDTError.error("Failed to decode header metadata as utf8")
         }
@@ -240,7 +240,7 @@ public class HDTParser {
         let crcPtr = (readBuffer + cookieLength + cLength + fLength + pLength)
         let crc16 = UInt16(bigEndian: crcPtr.assumingMemoryBound(to: UInt16.self).pointee)
         let crcLength = 2
-        let crcContent = Data(bytes: readBuffer, count: cookieLength + cLength + fLength + pLength)
+        let crcContent = Data(bytesNoCopy: readBuffer, count: cookieLength + cLength + fLength + pLength, deallocator: .none)
         let expected = crcContent.crc16().withUnsafeBytes { (p : UnsafePointer<UInt16>) in p.pointee }
         guard crc16 == expected else {
             throw HDTError.error(String(format: "Bad Control Information checksum: %04x, expecting %04x", Int(crc16), Int(expected)))

@@ -126,9 +126,9 @@ final class HDTTests: XCTestCase {
     
     func testHDTIdSequence() {
         let tests : [LookupPosition: Set<Int64>] = [
-            .subject: Set(1...23309),
-            .predicate: Set(1...169),
-            .object: Set(1...23127).union(Set(23311...76711)),
+            .subject: Set(1...23310),
+            .predicate: Set(1...170),
+            .object: Set(1...23128).union(Set(23311...76712)),
             ]
         
         do {

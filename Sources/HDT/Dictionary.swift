@@ -64,7 +64,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         var length: Int64
         var blockSize: Int
         var startingID: Int
-        var sharedBlocks: [Int]
+        var sharedBlocks: [Int64]
     }
 
     var cache: [TermLookupPair: Term]
@@ -87,17 +87,25 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
 
         var offset = metadata.offset
         
+        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read shared blocks")
         self.shared = try readDictionaryPartition(from: mmappedPtr, at: offset)
         offset += self.shared.length
-        
+        os_signpost(.end, log: log, name: "Parsing Dictionary", "Read shared blocks")
+
+        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read subjects blocks")
         self.subjects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
         offset += self.subjects.length
+        os_signpost(.end, log: log, name: "Parsing Dictionary", "Read subjects blocks")
 
+        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read predicates blocks")
         self.predicates = try readDictionaryPartition(from: mmappedPtr, at: offset)
         offset += self.predicates.length
+        os_signpost(.end, log: log, name: "Parsing Dictionary", "Read predicates blocks")
 
+        os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read objects blocks")
         self.objects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
         offset += self.objects.length
+        os_signpost(.end, log: log, name: "Parsing Dictionary", "Read objects blocks")
     }
     
     public func forEach(_ body: (LookupPosition, Int64, Term) throws -> Void) rethrows {
@@ -243,6 +251,12 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             let unescaped = input.mutableCopy() as! NSMutableString
             CFStringTransform(unescaped, nil, "Any-Hex/C" as NSString, true)
             s = unescaped as String
+            if s.contains("\\") {
+            }
+        }
+
+        guard let first = s.unicodeScalars.first else {
+            return Term(iri: "")
         }
         
         if s.hasPrefix("_") { // blank nodes start _:
@@ -261,6 +275,8 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             } else {
                 return Term(string: String(value))
             }
+        } else if first == Unicode.Scalar(0x22) { // literals start with a double quote, end with the last double quote, and have optional datatype or language tags
+            fatalError("TODO: implement handling of literals with combining characters")
         } else { // anything else is an IRI
             return Term(iri: s)
         }
@@ -279,11 +295,12 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         
         let localIDOffset = id - Int64(section.startingID)
         let skipBlocks = Int(localIDOffset/Int64(maximumStringsPerBlock))
-        nextID += Int64(skipBlocks * maximumStringsPerBlock)
+        nextID += Int64(skipBlocks) * Int64(maximumStringsPerBlock)
         
         let blockMaxID = (section.startingID + section.count - 1)
-        let blockIndex = blocks.dropFirst(skipBlocks).startIndex
-        let blockOffset = blocks[blockIndex]
+        let blocksSuffix = blocks.dropFirst(skipBlocks)
+        let blockIndex = blocksSuffix.startIndex
+        let blockOffset = Int(blocksSuffix[blockIndex])
         var ptr = readBuffer + blockOffset
         let charsPtr = ptr.assumingMemoryBound(to: CChar.self)
         
@@ -320,11 +337,17 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             
             ptr += suffixLength
             
-            commonPrefixChars.replaceSubrange(Int(sharedPrefixLength)..., with: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
+            if sharedPrefixLength <= commonPrefixChars.count {
+                let replacementRange = Int(sharedPrefixLength)..<commonPrefixChars.endIndex
+                commonPrefixChars.replaceSubrange(replacementRange, with: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
+            } else {
+                warn("offset=\(offset+Int64(blockOffset))")
+                fatalError("Previous term string is not long enough to use declared shared prefix (\(commonPrefixChars.count) < \(sharedPrefixLength))")
+            }
             commonPrefix = String(cString: commonPrefixChars)
             let newID = nextID
             nextID += 1
-            //            warn("    - TERM: \(newID): \(t)")
+//                        warn("    - TERM: \(newID): \(commonPrefix)")
             do {
                 let t = try self.term(from: commonPrefix)
                 dictionary[newID] = t
@@ -363,10 +386,10 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
         
-        let (blocks, blocksLength) = try readSequence(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
+        let (blocksArray, blocksLength) = try readSequenceImmediate(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
+        
         ptr += Int(blocksLength)
         
-        let blocksArray = Array(blocks)
         let dataBlockPosition = offset + dictionaryHeaderLength + blocksLength
         let crcLength : Int64 = 4
         let length = dictionaryHeaderLength + blocksLength + dataLength + crcLength
@@ -378,7 +401,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             length: length,
             blockSize: blockSize,
             startingID: startingID,
-            sharedBlocks: blocksArray.lazy.map { Int($0) }
+            sharedBlocks: blocksArray
         )
     }
 }

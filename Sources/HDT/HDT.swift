@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 import SPARQLSyntax
+import os.log
+import os.signpost
 
 public enum HDTError: Error {
     case error(String)
@@ -20,6 +22,7 @@ public class HDT {
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
     public var controlInformation: ControlInformation
+    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 
     public struct ControlInformation: CustomDebugStringConvertible {
         public enum ControlType : UInt8 {
@@ -185,9 +188,14 @@ public extension HDT {
     
     public func triples() throws -> AnyIterator<Triple> {
         let dictionary = try hdtDictionary()
+        os_signpost(.begin, log: log, name: "Triples", "Read ID Triples")
         let (_, tripleIDs) = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: (nil, nil, nil))
+        os_signpost(.end, log: log, name: "Triples", "Read ID Triples")
+
+        os_signpost(.begin, log: log, name: "Triples", "Materializing")
         let triples = tripleIDs.lazy.compactMap { self.mapToTriple(ids: $0, from: dictionary) }
-        
+        os_signpost(.end, log: log, name: "Triples", "Materializing")
+
         let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
         return AnyIterator(i)
     }
@@ -260,7 +268,7 @@ public extension HDT {
 
         let order = self.triplesMetadata.ordering
         guard case .spo = order else {
-            throw HDTError.error("TriplePattern matching on non-SPO ordered triples is unimplemented") // TODO
+            throw HDTError.error("TriplePattern matching on non-SPO ordered triples is unimplemented") // TODO: ensure the restriction tuples below are properly ordered for the current HDT ordering
         }
         
         let boundPositions = Set(restrictions.keys)
