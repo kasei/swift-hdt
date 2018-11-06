@@ -3,13 +3,59 @@ import Foundation
 import Kineo
 import HDT
 
+extension TurtleSerializer {
+    public func serializeOrdered<T: TextOutputStream, I: IteratorProtocol>(_ iter: I, to stream: inout T) throws where I.Element == Triple {
+        var triples = [Triple]()
+        let seq = IteratorSequence(iter)
+        var last: Term? = nil
+        for t in seq {
+            if let l = last, l != t.subject {
+                try serialize(triples, to: &stream, emitHeader: false)
+                triples = []
+            }
+            last = t.subject
+            triples.append(t)
+        }
+        try serialize(triples, to: &stream)
+    }
+}
+
 #if os(macOS)
 import os.log
 import os.signpost
 let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 #endif
 
-let filename = CommandLine.arguments.dropFirst().first!
+let args = CommandLine.arguments.dropFirst()
+var index = args.startIndex
+
+var useTurtle = false
+var prefixes = [String:Term]()
+while args[index].hasPrefix("-") {
+    let flag = args[index]
+    index += 1
+    switch flag {
+    case "-n":
+        let ns = args[index]
+        let iri = args[index+1]
+        index += 2
+        prefixes[ns] = Term(iri: iri)
+    case "-o":
+        let format = args[index]
+        index += 1
+        switch format {
+        case "turtle":
+            useTurtle = true
+        case "ntriples":
+            useTurtle = false
+        default:
+            fatalError("Unknown output format: \(format)")
+        }
+    default:
+        fatalError()
+    }
+}
+let filename = args[index]
 
 struct StdoutOutputStream: TextOutputStream {
     public init() {}
@@ -21,7 +67,6 @@ struct StdoutOutputStream: TextOutputStream {
 var stdout = StdoutOutputStream()
 
 do {
-    let useTurtle = false
     let p = try HDTParser(filename: filename)
     #if os(macOS)
     os_signpost(.begin, log: log, name: "Parsing", "Begin")
@@ -40,23 +85,20 @@ do {
     #if os(macOS)
     os_signpost(.begin, log: log, name: "Serialization", "N-Triples Serialization")
     #endif
-    let ser : RDFSerializer = useTurtle ? TurtleSerializer() : NTriplesSerializer()
-    try ser.serialize(triples, to: &stdout)
+    
+    if useTurtle {
+        let ser = TurtleSerializer(prefixes: prefixes)
+        ser.serializeHeader(to: &stdout)
+        try ser.serializeOrdered(triples, to: &stdout)
+    } else {
+        let ser : RDFSerializer = NTriplesSerializer()
+        try ser.serialize(triples, to: &stdout)
+    }
+    
+
     #if os(macOS)
     os_signpost(.end, log: log, name: "Serialization", "N-Triples Serialization")
     #endif
-
-//    var s = ""
-//    try ser.serialize(triples, to: &s)
-
-//    for (i, t) in triples.enumerated() {
-//        if i % 25_000 == 0 {
-//            os_signpost(.event, log: log, name: "Enumerating Triples", "%{public}d triples", i)
-//        }
-//
-//        try ser.serialize([t], to: &stdout)
-//    }
-
     #if os(macOS)
     os_signpost(.end, log: log, name: "Enumerating Triples", "Finished")
     #endif

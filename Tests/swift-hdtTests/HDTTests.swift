@@ -84,6 +84,7 @@ final class HDTTests: XCTestCase {
 
         let dictionary = try hdt.readDictionary(at: 1819)
         let (count, triples) = try hdt.readIDTriples(at: 5159548, dictionary: dictionary, restrict: (nil, nil, nil))
+        XCTAssertEqual(count, 242256)
         let gotPrefix = Array(triples.prefix(expectedPrefix.count))
         for (g, e) in zip(gotPrefix, expectedPrefix) {
 //            print("got triple: \(g)")
@@ -101,7 +102,10 @@ final class HDTTests: XCTestCase {
                 XCTFail()
                 return
             }
-//            print(t)
+            
+            XCTAssertEqual(t.subject, Term(value: "b1", type: .blank))
+            XCTAssertEqual(t.predicate, Term(iri: "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1"))
+            XCTAssertEqual(t.object, Term(iri: "http://data.semanticweb.org/person/barry-norton"))
         } catch let error {
             XCTFail(String(describing: error))
         }

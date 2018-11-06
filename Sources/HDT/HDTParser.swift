@@ -209,8 +209,6 @@ public class HDTParser {
             throw HDTError.error("Missing or invalid ordering metadata present in triples block")
         }
         
-        let triplesCount = info
-        
         switch info.format {
         case "<http://purl.org/HDT/hdt#triplesBitmap>":
             return TriplesMetadata(controlInformation: info, format: .bitmap, ordering: order, count: info.triplesCount, offset: offset + off_t(ciLength))
