@@ -1,6 +1,4 @@
 import Foundation
-import os.log
-import os.signpost
 
 extension Data {
     public func getField(_ index: Int, width bitsField: Int) -> Int64 {
@@ -39,10 +37,9 @@ extension Data {
             if (intraValueBitOffset64+valueWidth) <= bitWidth64 {
                 let d : UInt64 = self.withUnsafeBytes { $0[offset_u64] }
                 let mask = baseMask64 << intraValueBitOffset64
-                let v1 = (UInt64(d) & mask) >> intraValueBitOffset64
+                let v1 = (d & mask) >> intraValueBitOffset64
                 values.append(Int64(v1))
             } else {
-                // the value spans multiple u32s
                 let v1 = self.withUnsafeBytes { (p : UnsafePointer<UInt64>) -> Int64 in
                     let r = p[offset_u64] >> intraValueBitOffset64
                     let d = p[offset_u64+1] << (splitShiftLeftBase - intraValueBitOffset64)
@@ -74,10 +71,9 @@ extension Data {
                 if (intraValueBitOffset64+valueWidth) <= bitWidth64 {
                     let d : UInt64 = self.withUnsafeBytes { $0[offset_u64] }
                     let mask = baseMask64 << intraValueBitOffset64
-                    let v1 = (UInt64(d) & mask) >> intraValueBitOffset64
+                    let v1 = (d & mask) >> intraValueBitOffset64
                     return [Int64(v1)]
                 } else {
-                    // the value spans multiple u32s
                     let v1 = self.withUnsafeBytes { (p : UnsafePointer<UInt64>) -> Int64 in
                         let r = p[offset_u64] >> intraValueBitOffset64
                         let d = p[offset_u64+1] << (splitShiftLeftBase - intraValueBitOffset64)
@@ -159,7 +155,7 @@ func readSequenceLazy(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t
     ptr += 1
     
     let arraySize = (bits * entriesCount + 7) / 8
-    let sequenceDataOffset = Int64(readBuffer.distance(to: ptr))
+    let sequenceDataOffset = off_t(readBuffer.distance(to: ptr))
     
     let sequenceData = try readData(from: mmappedPtr, at: offset + sequenceDataOffset, length: arraySize)
     ptr += arraySize
@@ -202,7 +198,7 @@ func readSequenceImmediate(from mmappedPtr: UnsafeMutableRawPointer, at offset: 
     ptr += 1
     
     let arraySize = (bits * entriesCount + 7) / 8
-    let sequenceDataOffset = Int64(readBuffer.distance(to: ptr))
+    let sequenceDataOffset = off_t(readBuffer.distance(to: ptr))
     
     let sequenceData = try readData(from: mmappedPtr, at: offset + sequenceDataOffset, length: arraySize)
     ptr += arraySize

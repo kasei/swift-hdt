@@ -26,7 +26,7 @@ _:b10 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/
 
 This project is early in development, and has many limitations:
 
-* Currently only compiles on MacOS 10.14
+* Currently only works on MacOS 10.14
 * Only serializing the entire HDT file is possible (triple pattern matching will come in the future)
 * Only "Four Part" dictionary encoding is currently supported
 * Only "Log64" encoding of bitmap triples values is currently supported

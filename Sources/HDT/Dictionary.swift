@@ -1,7 +1,11 @@
 import Foundation
+import CoreFoundation
 import SPARQLSyntax
+
+#if os(macOS)
 import os.log
 import os.signpost
+#endif
 
 public struct DictionaryMetadata: CustomDebugStringConvertible {
     enum DictionaryType {
@@ -55,12 +59,14 @@ extension HDTDictionaryProtocol {
 }
 
 public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
+    #if os(macOS)
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+    #endif
     
     struct DictionarySectionMetadata {
         var count: Int
-        var offset: Int64
-        var dataOffset: Int64
+        var offset: off_t
+        var dataOffset: off_t
         var length: Int64
         var blockSize: Int
         var startingID: Int
@@ -87,25 +93,41 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
 
         var offset = metadata.offset
         
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read shared blocks")
+        #endif
         self.shared = try readDictionaryPartition(from: mmappedPtr, at: offset)
-        offset += self.shared.length
+        offset += off_t(self.shared.length)
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Dictionary", "Read shared blocks")
+        #endif
 
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read subjects blocks")
+        #endif
         self.subjects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
-        offset += self.subjects.length
+        offset += off_t(self.subjects.length)
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Dictionary", "Read subjects blocks")
+        #endif
 
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read predicates blocks")
+        #endif
         self.predicates = try readDictionaryPartition(from: mmappedPtr, at: offset)
-        offset += self.predicates.length
+        offset += off_t(self.predicates.length)
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Dictionary", "Read predicates blocks")
+        #endif
 
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Dictionary", "Read objects blocks")
+        #endif
         self.objects = try readDictionaryPartition(from: mmappedPtr, at: offset, startingID: 1 + shared.count)
-        offset += self.objects.length
+        offset += off_t(self.objects.length)
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Dictionary", "Read objects blocks")
+        #endif
     }
     
     public func forEach(_ body: (LookupPosition, Int64, Term) throws -> Void) rethrows {
@@ -196,7 +218,9 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let count = cache.count
         if count == cacheMaxItems {
             if !cacheReachedFullState {
+                #if os(macOS)
                 os_signpost(.event, log: log, name: "Dictionary", "%{public}s cache reached cache maximum size of %{public}d", "\(lookup.position)", count)
+                #endif
             }
         } else if count > cacheMaxItems {
             cacheReachedFullState = true
@@ -248,11 +272,15 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         if s.contains("\\") {
             // unescape \u and \U hex codes
             let input = s as NSString
-            let unescaped = input.mutableCopy() as! NSMutableString
-            CFStringTransform(unescaped, nil, "Any-Hex/C" as NSString, true)
+            let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
+            let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
+            CFStringTransform(unescaped, nil, transform, true)
+            #if os(macOS)
             s = unescaped as String
-            if s.contains("\\") {
-            }
+            #else
+            let nss = "\(unescaped)"
+            s = nss as String
+            #endif
         }
 
         guard let first = s.unicodeScalars.first else {
@@ -276,7 +304,8 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
                 return Term(string: String(value))
             }
         } else if first == Unicode.Scalar(0x22) { // literals start with a double quote, end with the last double quote, and have optional datatype or language tags
-            fatalError("TODO: implement handling of literals with combining characters")
+            warn("TODO: implement handling of literals with combining characters")
+            return Term(string: "\u{FFFD}")
         } else { // anything else is an IRI
             return Term(iri: s)
         }
@@ -341,7 +370,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
                 let replacementRange = Int(sharedPrefixLength)..<commonPrefixChars.endIndex
                 commonPrefixChars.replaceSubrange(replacementRange, with: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
             } else {
-                warn("offset=\(offset+Int64(blockOffset))")
+//                warn("offset=\(offset+Int64(blockOffset))")
                 fatalError("Previous term string is not long enough to use declared shared prefix (\(commonPrefixChars.count) < \(sharedPrefixLength))")
             }
             commonPrefix = String(cString: commonPrefixChars)
@@ -386,11 +415,11 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
         
-        let (blocksArray, blocksLength) = try readSequenceImmediate(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
+        let (blocksArray, blocksLength) = try readSequenceImmediate(from: mmappedPtr, at: offset + off_t(dictionaryHeaderLength), assertType: 1)
         
         ptr += Int(blocksLength)
         
-        let dataBlockPosition = offset + dictionaryHeaderLength + blocksLength
+        let dataBlockPosition = offset + off_t(dictionaryHeaderLength) + off_t(blocksLength)
         let crcLength : Int64 = 4
         let length = dictionaryHeaderLength + blocksLength + dataLength + crcLength
         

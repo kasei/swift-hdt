@@ -1,6 +1,4 @@
 import Foundation
-import os.log
-import os.signpost
 
 public typealias IDRestriction = (HDT.TermID?, HDT.TermID?, HDT.TermID?)
 
@@ -105,8 +103,6 @@ public protocol HDTTriples: CustomDebugStringConvertible {
 }
 
 public final class HDTListTriples: HDTTriples {
-    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
-    
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
     public var metadata: TriplesMetadata
@@ -162,8 +158,6 @@ extension HDTListTriples: CustomDebugStringConvertible {
 }
 
 public final class HDTBitmapTriples: HDTTriples {
-    let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
-    
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
     public var metadata: TriplesMetadata
@@ -177,9 +171,9 @@ public final class HDTBitmapTriples: HDTTriples {
     func readTriplesBitmap() throws -> (BitmapTriplesData, Int64, Int64) {
         let offset = metadata.offset
         let (bitmapY, _, byLength) = try readBitmap(from: mmappedPtr, at: offset)
-        let (bitmapZ, zBitCount, bzLength) = try readBitmap(from: mmappedPtr, at: offset + byLength)
-        let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength)
-        let (arrayZ, azLength) = try readArray(from: mmappedPtr, at: offset + byLength + bzLength + ayLength)
+        let (bitmapZ, zBitCount, bzLength) = try readBitmap(from: mmappedPtr, at: offset + off_t(byLength))
+        let (arrayY, ayLength) = try readArray(from: mmappedPtr, at: offset + off_t(byLength) + off_t(bzLength))
+        let (arrayZ, azLength) = try readArray(from: mmappedPtr, at: offset + off_t(byLength) + off_t(bzLength) + off_t(ayLength))
         
         let length = byLength + bzLength + ayLength + azLength
         let data = BitmapTriplesData(bitmapY: bitmapY, bitmapZ: bitmapZ, arrayY: arrayY, arrayZ: arrayZ)

@@ -1,8 +1,10 @@
-import Darwin
 import Foundation
 import SPARQLSyntax
+
+#if os(macOS)
 import os.log
 import os.signpost
+#endif
 
 public enum HDTError: Error {
     case error(String)
@@ -22,7 +24,9 @@ public class HDT {
     var size: Int
     var mmappedPtr: UnsafeMutableRawPointer
     public var controlInformation: ControlInformation
+    #if os(macOS)
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+    #endif
 
     public struct ControlInformation: CustomDebugStringConvertible {
         public enum ControlType : UInt8 {
@@ -188,13 +192,21 @@ public extension HDT {
     
     public func triples() throws -> AnyIterator<Triple> {
         let dictionary = try hdtDictionary()
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Triples", "Read ID Triples")
+        #endif
         let (_, tripleIDs) = try readIDTriples(at: self.triplesMetadata.offset, dictionary: dictionary, restrict: (nil, nil, nil))
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Triples", "Read ID Triples")
+        #endif
 
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Triples", "Materializing")
+        #endif
         let triples = tripleIDs.lazy.compactMap { self.mapToTriple(ids: $0, from: dictionary) }
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Triples", "Materializing")
+        #endif
 
         let i = HDTTriplesIterator(hdt: self, triples: triples.makeIterator())
         return AnyIterator(i)

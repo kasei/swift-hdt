@@ -1,12 +1,16 @@
-import Darwin
 import Foundation
 import SPARQLSyntax
 import CryptoSwift
+
+#if os(macOS)
 import os.log
 import os.signpost
+#endif
 
 public class HDTParser {
+    #if os(macOS)
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
+    #endif
     
     enum DictionaryType : UInt32 {
         case dictionarySectionPlain = 1
@@ -47,22 +51,34 @@ public class HDTParser {
     
     public func parse() throws -> HDT {
         var offset : Int64 = 0
-        let (ci, ciLength) = try readControlInformation(at: offset)
+        let (ci, ciLength) = try readControlInformation(at: off_t(offset))
         offset += ciLength
         
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Header", "Begin")
-        let (header, headerLength) = try readHeader(at: offset)
+        #endif
+        let (header, headerLength) = try readHeader(at: off_t(offset))
         offset += headerLength
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Header", "Finished")
+        #endif
         
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Dictionary", "Begin")
-        let (dictionary, dictionaryLength) = try parseDictionary(at: offset)
+        #endif
+        let (dictionary, dictionaryLength) = try parseDictionary(at: off_t(offset))
         offset += dictionaryLength
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Dictionary", "Finished")
+        #endif
         
+        #if os(macOS)
         os_signpost(.begin, log: log, name: "Parsing Triples", "Begin")
-        let triples = try parseTriples(at: offset)
+        #endif
+        let triples = try parseTriples(at: off_t(offset))
+        #if os(macOS)
         os_signpost(.end, log: log, name: "Parsing Triples", "Finished")
+        #endif
         
         return try HDT(
             filename: filename,
@@ -98,7 +114,7 @@ public class HDTParser {
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
         
-        let (_, blocksLength) = try readSequenceLazy(from: mmappedPtr, at: offset + dictionaryHeaderLength, assertType: 1)
+        let (_, blocksLength) = try readSequenceLazy(from: mmappedPtr, at: offset + off_t(dictionaryHeaderLength), assertType: 1)
         ptr += Int(blocksLength)
 
         let dataLength = Int64(bytesCount)
@@ -120,19 +136,19 @@ public class HDTParser {
         
         let sharedOffset = offset
         let sharedLength = try parseDictionaryPartition(at: offset)
-        offset += sharedLength
+        offset += off_t(sharedLength)
         
         let subjectsOffset = offset
         let subjectsLength = try parseDictionaryPartition(at: offset)
-        offset += subjectsLength
+        offset += off_t(subjectsLength)
         
         let predicatesOffset = offset
         let predicatesLength = try parseDictionaryPartition(at: offset)
-        offset += predicatesLength
+        offset += off_t(predicatesLength)
         
         let objectsOffset = offset
         let objectsLength = try parseDictionaryPartition(at: offset)
-        offset += objectsLength
+        offset += off_t(objectsLength)
         
         let currentLength = sharedLength + subjectsLength + predicatesLength + objectsLength
         
@@ -152,7 +168,7 @@ public class HDTParser {
         let (info, ciLength) = try readControlInformation(at: offset)
         
         if info.format == "<http://purl.org/HDT/hdt#dictionaryFour>" {
-            let (offsets, dLength) = try parseDictionaryTypeFour(at: offset + ciLength, control: info)
+            let (offsets, dLength) = try parseDictionaryTypeFour(at: offset + off_t(ciLength), control: info)
             return (offsets, ciLength + dLength)
         } else {
             throw HDTError.error("unimplemented dictionary format type: \(info.format)")
@@ -197,9 +213,9 @@ public class HDTParser {
         
         switch info.format {
         case "<http://purl.org/HDT/hdt#triplesBitmap>":
-            return TriplesMetadata(controlInformation: info, format: .bitmap, ordering: order, count: info.triplesCount, offset: offset + ciLength)
+            return TriplesMetadata(controlInformation: info, format: .bitmap, ordering: order, count: info.triplesCount, offset: offset + off_t(ciLength))
         case "<http://purl.org/HDT/hdt#triplesList>":
-            return TriplesMetadata(controlInformation: info, format: .list, ordering: order, count: info.triplesCount, offset: offset + ciLength)
+            return TriplesMetadata(controlInformation: info, format: .list, ordering: order, count: info.triplesCount, offset: offset + off_t(ciLength))
         default:
             throw HDTError.error("Unrecognized triples format: \(info.format)")
         }
