@@ -39,11 +39,6 @@ public enum LookupPosition {
     case object
 }
 
-struct TermLookupPair: Hashable {
-    var position: LookupPosition
-    var id: Int64
-}
-
 public protocol HDTDictionaryProtocol: CustomDebugStringConvertible {
     var count: Int { get }
     var metadata: DictionaryMetadata { get }
@@ -73,6 +68,11 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         var sharedBlocks: [Int64]
     }
 
+    struct TermLookupPair: Hashable {
+        var position: LookupPosition
+        var id: Int64
+    }
+    
     var cache: [TermLookupPair: Term]
     public var metadata: DictionaryMetadata
     var shared: DictionarySectionMetadata!
@@ -267,29 +267,74 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         }
     }
 
-    private func term(from s: String) throws -> Term {
-        var s = s
+    private func string(from term: Term) throws -> String {
+        switch term.type {
+        case .iri:
+            return term.value
+        case .blank:
+            return "_:\(term.value)"
+        case .language(let l):
+            return "\"\(term.value)\"@\(l)"
+        case .datatype(let dt):
+            return "\"\(term.value)\"^^<\(dt.value)>"
+        }
+    }
+    
+    private func unicodeUnescaped(_ orig: String) -> String {
+        var s = orig
+        // unescape \u and \U hex codes
+        let input = s as NSString
+        let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
+        let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
+        CFStringTransform(unescaped, nil, transform, true)
+        #if os(macOS)
+        s = unescaped as String
+        #else
+        let nss = "\(unescaped)"
+        s = nss as String
+        #endif
+        return s
+    }
+    
+    private func unicodeEscaped(_ orig: String) -> String {
+        var s = orig
+        // escape \u and \U hex codes
+        let input = s as NSString
+        let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
+        let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
+        CFStringTransform(unescaped, nil, transform, false)
+        #if os(macOS)
+        s = unescaped as String
+        #else
+        let nss = "\(unescaped)"
+        s = nss as String
+        #endif
+        return s
+    }
+    
+    private func term(from orig: String) throws -> Term {
+        /**
+         
+         Strings may have \u and \U escaping. After unescaping:
+         
+         * Strings starting with "_:" are blank nodes
+         * Strings starting with a double quote are literals; their value ends with a double quote, and have optional datatype or language tags
+         * Anything else is an IRI
+         
+         **/
+
+        var s = orig
         if s.contains("\\") {
-            // unescape \u and \U hex codes
-            let input = s as NSString
-            let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
-            let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
-            CFStringTransform(unescaped, nil, transform, true)
-            #if os(macOS)
-            s = unescaped as String
-            #else
-            let nss = "\(unescaped)"
-            s = nss as String
-            #endif
+            s = unicodeUnescaped(s)
         }
 
         guard let first = s.unicodeScalars.first else {
             return Term(iri: "")
         }
         
-        if s.hasPrefix("_") { // blank nodes start _:
+        if s.hasPrefix("_:") {
             return Term(value: String(s.dropFirst(2)), type: .blank)
-        } else if s.hasPrefix("\"") { // literals start with a double quote, end with the last double quote, and have optional datatype or language tags
+        } else if s.hasPrefix("\"") { // literal starting with a double quote
             let i = s.lastIndex(of: "\"")!
             let value = s.dropFirst().prefix(upTo: i)
             let suffix = s[i...].dropFirst()
@@ -303,10 +348,23 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             } else {
                 return Term(string: String(value))
             }
-        } else if first == Unicode.Scalar(0x22) { // literals start with a double quote, end with the last double quote, and have optional datatype or language tags
-            warn("TODO: implement handling of literals with combining characters")
-            return Term(string: "\u{FFFD}")
-        } else { // anything else is an IRI
+        } else if first == Unicode.Scalar(0x22) { // literal starting with a double quote with a combining character
+            let scalars = Array(s.unicodeScalars)
+            let i = scalars.lastIndex(of: Unicode.Scalar(0x22))!
+            let value = String.UnicodeScalarView(scalars.dropFirst().prefix(upTo: i))
+            let suffixScalars = String.UnicodeScalarView(scalars[i...].dropFirst())
+            let suffix = String(suffixScalars)
+            if suffix.hasPrefix("^^<") {
+                let dtIRI = String(suffix.dropFirst(3).dropLast())
+                let dt = TermDataType(stringLiteral: dtIRI)
+                return Term(value: String(value), type: .datatype(dt))
+            } else if suffix.hasPrefix("@") {
+                let lang = String(suffix.dropFirst())
+                return Term(value: String(value), type: .language(lang))
+            } else {
+                return Term(string: String(value))
+            }
+        } else { // IRI
             return Term(iri: s)
         }
     }

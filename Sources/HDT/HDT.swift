@@ -163,25 +163,14 @@ public extension HDT {
         
         var hdt: HDT
         var triples: I
-        var count: Int
         
         init(hdt: HDT, triples: I) {
             self.hdt = hdt
             self.triples = triples
-            self.count = 0
         }
         
-//        deinit {
-//            warn("HDTTriplesIterator generated \(count) triples")
-//        }
-        
         func next() -> Triple? {
-            if let t = triples.next() {
-                count += 1
-                return t
-            } else {
-                return nil
-            }
+            return triples.next()
         }
     }
 
