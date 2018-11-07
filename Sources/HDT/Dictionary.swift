@@ -467,7 +467,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let dataLength = Int64(readVByte(&ptr))
         let blockSize = Int(readVByte(&ptr))
         
-        let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+//        let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
         // TODO: verify CRC
         

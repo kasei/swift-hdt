@@ -108,7 +108,7 @@ public class HDTParser {
         let bytesCount = Int(readVByte(&ptr))
         _ = Int(readVByte(&ptr)) // block size
         
-        let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+//        let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
         // TODO: verify CRC
         
@@ -121,7 +121,7 @@ public class HDTParser {
         ptr += Int(dataLength)
         
         
-        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+//        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
         // TODO: verify crc
         let crcLength = 4
         ptr += crcLength

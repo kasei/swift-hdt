@@ -150,7 +150,7 @@ func readSequenceLazy(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t
     var ptr = readBuffer + typeLength + bitsLength
     let entriesCount = Int(readVByte(&ptr))
     
-    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+//    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
     ptr += 1
     
@@ -161,7 +161,7 @@ func readSequenceLazy(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t
     ptr += arraySize
     
     let values = sequenceData.getFields(width: bits, count: entriesCount)
-    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+//    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
     // TODO: verify crc
     ptr += 4
     
@@ -193,7 +193,7 @@ func readSequenceImmediate(from mmappedPtr: UnsafeMutableRawPointer, at offset: 
     var ptr = readBuffer + typeLength + bitsLength
     let entriesCount = Int(readVByte(&ptr))
     
-    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+//    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
     ptr += 1
     
@@ -204,7 +204,7 @@ func readSequenceImmediate(from mmappedPtr: UnsafeMutableRawPointer, at offset: 
     ptr += arraySize
     
     let values = sequenceData.getFieldsImmediate(width: bits, count: entriesCount)
-    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+//    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
     // TODO: verify crc
     ptr += 4
     
@@ -228,7 +228,7 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     let bitCount = Int(readVByte(&ptr))
     let bytes = (bitCount + 7)/8
     
-    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+//    let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     // TODO: verify crc
     ptr += 1
     
@@ -266,7 +266,7 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     
     ptr += bytes
     
-    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+//    let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
     // TODO: verify crc
     ptr += 4
     

@@ -122,8 +122,8 @@ public final class HDTListTriples: HDTTriples {
         let s = stride(from: buffer.startIndex, to: buffer.endIndex, by: 3)
         let t = s.lazy.map { (Int64(buffer[$0]), Int64(buffer[$0+1]), Int64(buffer[$0+2])) }
         
-        let ptr = readBuffer + (4*3*count)
-        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
+//        let ptr = readBuffer + (4*3*count)
+//        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
         // TODO: verify crc
         
         return AnyIterator(t.makeIterator())
@@ -143,7 +143,7 @@ extension HDTListTriples: CustomDebugStringConvertible {
         var s = ""
         print(metadata, terminator: "", to: &s)
         do {
-            let (count, i) = try idTriples(restrict: (nil, nil, nil))
+            let (count, _) = try idTriples(restrict: (nil, nil, nil))
             print("parsed triple count: \(count)", to: &s)
 //            var actual = 0
 //            for _ in IteratorSequence(i) {
@@ -247,7 +247,7 @@ extension HDTBitmapTriples: CustomDebugStringConvertible {
         print(metadata, terminator: "", to: &s)
         do {
             let ids = (0...).lazy.map { HDT.TermID($0) }
-            let (count, i) = try self.idTriples(ids: ids, restrict: (nil, nil, nil))
+            let (count, _) = try self.idTriples(ids: ids, restrict: (nil, nil, nil))
             print("z-bitmap triple count: \(count)", to: &s)
 //            var actual = 0
 //            for _ in IteratorSequence(i) {
