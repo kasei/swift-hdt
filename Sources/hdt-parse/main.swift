@@ -29,12 +29,15 @@ let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
 let args = CommandLine.arguments.dropFirst()
 var index = args.startIndex
 
+var simplify = false
 var useTurtle = false
 var prefixes = [String:Term]()
 while args[index].hasPrefix("-") {
     let flag = args[index]
     index += 1
     switch flag {
+    case "-s":
+        simplify = true
     case "-n":
         let ns = args[index]
         let iri = args[index+1]
@@ -72,6 +75,8 @@ do {
     os_signpost(.begin, log: log, name: "Parsing", "Begin")
     #endif
     let hdt = try p.parse()
+    hdt.simplifyBlankNodeIdentifiers = simplify
+    
     #if os(macOS)
     os_signpost(.end, log: log, name: "Parsing", "Finished")
     #endif

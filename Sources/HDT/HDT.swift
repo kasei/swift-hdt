@@ -22,6 +22,8 @@ public class HDT {
     var soCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
     var pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
     var size: Int
+    public var simplifyBlankNodeIdentifiers: Bool
+
     var mmappedPtr: UnsafeMutableRawPointer
     public var controlInformation: ControlInformation
     #if os(macOS)
@@ -77,7 +79,8 @@ public class HDT {
         self.triplesMetadata = triples
         self.dictionaryMetadata = dictionary
         self.controlInformation = ci
-
+        self.simplifyBlankNodeIdentifiers = false
+        
         self.state = .none
     }
     
@@ -175,7 +178,8 @@ public extension HDT {
     }
 
     func hdtDictionary() throws -> HDTDictionaryProtocol {
-        let dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        var dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
+        dictionary.simplifyBlankNodeIdentifiers = self.simplifyBlankNodeIdentifiers
         return dictionary
     }
     

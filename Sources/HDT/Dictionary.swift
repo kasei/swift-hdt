@@ -42,6 +42,7 @@ public enum LookupPosition {
 public protocol HDTDictionaryProtocol: CustomDebugStringConvertible {
     var count: Int { get }
     var metadata: DictionaryMetadata { get }
+    var simplifyBlankNodeIdentifiers: Bool { get set }
     func term(for id: Int64, position: LookupPosition) throws -> Term?
     func id(for term: Term, position: LookupPosition) throws -> Int64?
     func idSequence(for position: LookupPosition) -> AnySequence<Int64>
@@ -79,6 +80,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     var subjects: DictionarySectionMetadata!
     var predicates: DictionarySectionMetadata!
     var objects: DictionarySectionMetadata!
+    public var simplifyBlankNodeIdentifiers: Bool
     public var cacheMaxItems = 2 * 1024
     var cacheReachedFullState = false
     
@@ -90,6 +92,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         self.mmappedPtr = mmappedPtr
         self.size = size
         self.metadata = metadata
+        self.simplifyBlankNodeIdentifiers = false
 
         var offset = metadata.offset
         
@@ -246,12 +249,12 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         // but there will be lots of churn in O due to the ordering, so we don't attempt to
         // cache O values at all.
         let l = TermLookupPair(position: position, id: id)
-        if position != .object, let term = cachedTerm(for: l, from: section) {
+        if !simplifyBlankNodeIdentifiers, position != .object, let term = cachedTerm(for: l, from: section) {
             return term
         } else {
             do {
                 let dictionary = try probeDictionary(from: mmappedPtr, section: section, for: id)
-                if position != .object {
+                if !simplifyBlankNodeIdentifiers, position != .object {
                     updateCache(for: l, dictionary: dictionary)
                 }
                 if let term = dictionary[id] {
@@ -312,7 +315,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         return s
     }
     
-    private func term(from orig: String) throws -> Term {
+    private func term(from orig: String, for id: HDT.TermID) throws -> Term {
         /**
          
          Strings may have \u and \U escaping. After unescaping:
@@ -333,7 +336,11 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         }
         
         if s.hasPrefix("_:") {
-            return Term(value: String(s.dropFirst(2)), type: .blank)
+            if simplifyBlankNodeIdentifiers {
+                return Term(value: "b\(id)", type: .blank)
+            } else {
+                return Term(value: String(s.dropFirst(2)), type: .blank)
+            }
         } else if s.hasPrefix("\"") { // literal starting with a double quote
             let i = s.lastIndex(of: "\"")!
             let value = s.dropFirst().prefix(upTo: i)
@@ -399,7 +406,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         nextID += 1
         //            warn("    - TERM: \(newID): \(t)")
         do {
-            let t = try self.term(from: commonPrefix)
+            let t = try self.term(from: commonPrefix, for: newID)
             dictionary[newID] = t
         } catch {
             // TODO: warn of bad term data in the dictionary
@@ -436,7 +443,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
             nextID += 1
 //                        warn("    - TERM: \(newID): \(commonPrefix)")
             do {
-                let t = try self.term(from: commonPrefix)
+                let t = try self.term(from: commonPrefix, for: newID)
                 dictionary[newID] = t
             } catch {
                 // TODO: warn of bad term data in the dictionary
