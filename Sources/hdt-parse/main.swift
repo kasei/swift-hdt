@@ -32,7 +32,7 @@ var index = args.startIndex
 var simplify = false
 var useTurtle = false
 var prefixes = [String:Term]()
-while args[index].hasPrefix("-") {
+while index != args.endIndex, args[index].hasPrefix("-") {
     let flag = args[index]
     index += 1
     switch flag {
@@ -55,9 +55,19 @@ while args[index].hasPrefix("-") {
             fatalError("Unknown output format: \(format)")
         }
     default:
-        fatalError()
+        print("Unrecognized command line argument: \(flag)")
+        exit(1)
     }
 }
+
+guard index != args.endIndex else {
+    print("""
+    Usage: \(CommandLine.arguments.first!) [-s] [-o FORMAT] [-n NAMESPACE IRI] FILENAME.hdt
+    
+    """)
+    exit(1);
+}
+
 let filename = args[index]
 
 struct StdoutOutputStream: TextOutputStream {
