@@ -52,7 +52,8 @@ while index != args.endIndex, args[index].hasPrefix("-") {
         case "ntriples":
             useTurtle = false
         default:
-            fatalError("Unknown output format: \(format)")
+            print("Unknown output format: \(format)")
+            exit(1)
         }
     default:
         print("Unrecognized command line argument: \(flag)")

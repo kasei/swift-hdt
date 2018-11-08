@@ -287,9 +287,9 @@ func readArray(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) throw
         let (blocks, blocksLength) = try readSequenceLazy(from: mmappedPtr, at: offset, assertType: 1)
         return (blocks, blocksLength)
     case 2:
-        fatalError("TODO: Array read unimplemented: uint32")
+        throw HDTError.error("Array read unimplemented: uint32") // TODO: implement
     case 3:
-        fatalError("TODO: Array read unimplemented: uint64")
+        throw HDTError.error("Array read unimplemented: uint64") // TODO: implement
     default:
         throw HDTError.error("Invalid array type (\(type)) at offset \(offset)")
     }

@@ -133,7 +133,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         #endif
     }
     
-    public func forEach(_ body: (LookupPosition, Int64, Term) throws -> Void) rethrows {
+    public func forEach(_ body: (LookupPosition, Int64, Term) throws -> Void) throws {
         let sections : [DictionarySectionMetadata] = [predicates, objects]
         let positions : [LookupPosition] = [.predicate, .object]
         for (section, position) in zip(sections, positions) {
@@ -142,7 +142,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
                 if let term = try term(for: Int64(id), position: position) {
                     try body(position, Int64(id), term)
                 } else {
-                    fatalError("Unexpectedly failed to look up term for id \(id) in section \(section)")
+                    throw HDTError.error("Unexpectedly failed to look up term for id \(id) in section \(section)")
                 }
             }
         }
@@ -436,7 +436,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
                 commonPrefixChars.replaceSubrange(replacementRange, with: UnsafeMutableBufferPointer(start: chars, count: suffixLength))
             } else {
 //                warn("offset=\(offset+Int64(blockOffset))")
-                fatalError("Previous term string is not long enough to use declared shared prefix (\(commonPrefixChars.count) < \(sharedPrefixLength))")
+                throw HDTError.error("Previous term string is not long enough to use declared shared prefix (\(commonPrefixChars.count) < \(sharedPrefixLength))")
             }
             commonPrefix = String(cString: commonPrefixChars)
             let newID = nextID

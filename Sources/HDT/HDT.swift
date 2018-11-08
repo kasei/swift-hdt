@@ -293,9 +293,7 @@ public extension HDT {
         case []:
             return try triples()
         default:
-            fatalError("TriplePattern matching cannot be performed on a pattern that requires an index other than \(order)")
+            throw HDTError.error("TriplePattern matching cannot be performed on a pattern that requires an index other than \(order)")
         }
-        
-        fatalError("unimplemented")
     }
 }
