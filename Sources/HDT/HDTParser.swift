@@ -100,7 +100,7 @@ public class HDTParser {
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
         guard type == 2 else {
-            throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
+            throw HDTError.error("Trying to read dictionary partition but type does not match expected value at offset \(offset): \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)

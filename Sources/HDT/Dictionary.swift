@@ -466,7 +466,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let type = UInt32(d.pointee)
         let typeLength : Int64 = 1
         guard type == 2 else {
-            throw HDTError.error("Dictionary partition: Trying to read a CSD_PFC but type does not match: \(type)")
+            throw HDTError.error("Trying to read dictionary partition but type does not match expected value at offset \(offset): \(type)")
         }
         
         var ptr = readBuffer + Int(typeLength)
@@ -479,8 +479,8 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         // TODO: verify CRC
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
-        
-        let (blocksArray, blocksLength) = try readSequenceImmediate(from: mmappedPtr, at: offset + off_t(dictionaryHeaderLength), assertType: 1)
+        let sectionOffset = offset + off_t(dictionaryHeaderLength)
+        let (blocksArray, blocksLength) = try readSequenceImmediate(from: mmappedPtr, at: sectionOffset, assertType: 1)
         
         ptr += Int(blocksLength)
         

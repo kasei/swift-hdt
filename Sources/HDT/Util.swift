@@ -22,6 +22,10 @@ extension Data {
     }
 
     public func getFieldsImmediate(width valueWidth: Int, count: Int) -> [Int64] {
+        guard valueWidth > 0 else {
+            return [Int64](repeating: 0, count: count)
+        }
+        
         let bitWidth64 = UInt64.self.bitWidth
 
         var values = [Int64](reserveCapacity: count)
@@ -53,6 +57,11 @@ extension Data {
     }
     
     public func getFields(width valueWidth: Int, count: Int) -> AnySequence<Int64> {
+        guard valueWidth > 0 else {
+            let values = [Int64](repeating: 0, count: count)
+            return AnySequence(values)
+        }
+        
         let bitWidth64 = UInt64.self.bitWidth
 
         return AnySequence { () -> BlockIterator<Int64> in
