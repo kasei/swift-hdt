@@ -181,7 +181,7 @@ public class HDTParser {
         }
     }
     
-    func readHeader(at offset: off_t) throws -> (String, Int64) {
+    func readHeader(at offset: off_t) throws -> (HeaderMetadata, Int64) {
         let (info, ciLength) = try readControlInformation(at: offset)
         
         guard info.format == "ntriples" else {
@@ -204,7 +204,12 @@ public class HDTParser {
         }
         
         let length = ciLength + Int64(headerLength)
-        return (ntriples, length)
+        let header = HeaderMetadata(
+            controlInformation: info,
+            rdfContent: ntriples,
+            offset: off_t(offset)
+        )
+        return (header, length)
     }
     
     

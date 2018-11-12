@@ -10,22 +10,53 @@ public enum HDTError: Error {
     case error(String)
 }
 
+public struct HeaderMetadata: CustomDebugStringConvertible {
+    var controlInformation: HDT.ControlInformation
+    var rdfContent: String
+    var offset: off_t
+    
+    public var debugDescription: String {
+        var s = ""
+        print(controlInformation, to: &s)
+        print("offset: \(offset)", to: &s)
+        print("rdf payload:\n\(rdfContent)", to: &s)
+        // If we wanted to have Kineo be a dependency, we could pretty-print the payload:
+//        do {
+//            let par = RDFParser(syntax: .turtle, base: "", produceUniqueBlankIdentifiers: false)
+//            var triples = [Triple]()
+//            try par.parse(string: rdfContent) { (s, p, o) in
+//                triples.append(Triple(subject: s, predicate: p, object: o))
+//            }
+//            let prefixes = [
+//                "hdt": Term(iri: "http://purl.org/HDT/hdt#"),
+//                "dc": Term(iri: "http://purl.org/dc/terms/"),
+//                "void": Term(iri: "http://rdfs.org/ns/void#"),
+//                ]
+//
+//            let ser = TurtleSerializer(prefixes: prefixes)
+//            try ser.serialize(triples, to: &s)
+//        } catch let error {
+//            print("*** Failed to parse header RDF: \(error)", to: &s)
+//        }
+        return s
+    }
+}
+
 public class HDT {
     public typealias TermID = Int64
     public typealias IDTriple = (TermID, TermID, TermID)
     
     var filename: String
-    var header: String
+    var header: HeaderMetadata
     var triplesMetadata: TriplesMetadata
     var dictionaryMetadata: DictionaryMetadata
-    public var state: FileState
-    var soCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
-    var pCounter = AnyIterator(sequence(first: Int64(1)) { $0 + 1 })
     var size: Int
-    public var simplifyBlankNodeIdentifiers: Bool
-
     var mmappedPtr: UnsafeMutableRawPointer
+
+    public var state: FileState
+    public var simplifyBlankNodeIdentifiers: Bool
     public var controlInformation: ControlInformation
+
     #if os(macOS)
     let log = OSLog(subsystem: "us.kasei.swift.hdt", category: .pointsOfInterest)
     #endif
@@ -71,7 +102,7 @@ public class HDT {
         }
     }
     
-    init(filename: String, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer, control ci: ControlInformation, header: String, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
+    init(filename: String, size: Int, ptr mmappedPtr: UnsafeMutableRawPointer, control ci: ControlInformation, header: HeaderMetadata, triples: TriplesMetadata, dictionary: DictionaryMetadata) throws {
         self.filename = filename
         self.size = size
         self.mmappedPtr = mmappedPtr
@@ -144,6 +175,9 @@ extension HDT: CustomDebugStringConvertible {
             print(controlInformation, to: &s)
             print("", to: &s)
             
+            print("Header:", to: &s)
+            print(header, to: &s)
+
             print("Dictionary:", to: &s)
             let dictionary = try hdtDictionary()
             print(dictionary, to: &s)
