@@ -94,7 +94,7 @@ public class HDTParser {
     func parseDictionaryPartition(at offset: off_t) throws -> Int64 {
         var readBuffer = mmappedPtr
         readBuffer += Int(offset)
-
+        let crcStart = readBuffer
         // NOTE: HDT docs say this should be a u32, but the code says otherwise
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
@@ -108,24 +108,30 @@ public class HDTParser {
         let bytesCount = Int(readVByte(&ptr))
         _ = Int(readVByte(&ptr)) // block size
         
-//        let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+        let crc = CRC8(crcStart, length: crcStart.distance(to: ptr))
+        let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
-        // TODO: verify CRC
+        if crc.crc8 != expectedCRC8 {
+            throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+        }
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
-        
+
         let (_, blocksLength) = try readSequenceLazy(from: mmappedPtr, at: offset + off_t(dictionaryHeaderLength), assertType: 1)
         ptr += Int(blocksLength)
 
+        let crc32Start = ptr
         let dataLength = Int64(bytesCount)
         ptr += Int(dataLength)
         
-        
-//        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
-        // TODO: verify crc
+        let crc32 = CRC32(crc32Start, length: Int(dataLength))
+        let expectedCRC32 = ptr.assumingMemoryBound(to: UInt32.self).pointee
         let crcLength = 4
         ptr += crcLength
-        
+        if crc32.crc32 != expectedCRC32 {
+            throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+        }
+
         let length = dictionaryHeaderLength + blocksLength + dataLength + Int64(crcLength)
         return length
     }

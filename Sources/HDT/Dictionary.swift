@@ -460,7 +460,7 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     
     private func readDictionaryPartition(from ptr: UnsafeMutableRawPointer, at offset: off_t, startingID: Int = 1) throws -> DictionarySectionMetadata {
         let readBuffer = ptr + Int(offset)
-        
+        let crcStart = readBuffer
         // NOTE: HDT docs say this should be a u32, but the code says otherwise
         let d = readBuffer.assumingMemoryBound(to: UInt8.self)
         let type = UInt32(d.pointee)
@@ -474,10 +474,13 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let dataLength = Int64(readVByte(&ptr))
         let blockSize = Int(readVByte(&ptr))
         
-//        let crc8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
+        let crc = CRC8(crcStart, length: crcStart.distance(to: ptr))
+        let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
-        // TODO: verify CRC
-        
+        if crc.crc8 != expectedCRC8 {
+            throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+        }
+
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
         let sectionOffset = offset + off_t(dictionaryHeaderLength)
         let (blocksArray, blocksLength) = try readSequenceImmediate(from: mmappedPtr, at: sectionOffset, assertType: 1)

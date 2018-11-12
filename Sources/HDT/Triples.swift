@@ -122,9 +122,17 @@ public final class HDTListTriples: HDTTriples {
         let s = stride(from: buffer.startIndex, to: buffer.endIndex, by: 3)
         let t = s.lazy.map { (Int64(buffer[$0]), Int64(buffer[$0+1]), Int64(buffer[$0+2])) }
         
-//        let ptr = readBuffer + (4*3*count)
-//        let crc32 = UInt32(bigEndian: ptr.assumingMemoryBound(to: UInt32.self).pointee)
-        // TODO: verify crc
+        let crc32Start = readBuffer
+        let dataLength = 4*3*count
+        var ptr = readBuffer + dataLength
+        
+        let crc32 = CRC32(crc32Start, length: Int(dataLength))
+        let expectedCRC32 = ptr.assumingMemoryBound(to: UInt32.self).pointee
+        let crcLength = 4
+        ptr += crcLength
+        if crc32.crc32 != expectedCRC32 {
+            throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+        }
         
         return AnyIterator(t.makeIterator())
     }
