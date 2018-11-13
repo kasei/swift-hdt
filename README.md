@@ -4,8 +4,16 @@
 
 ### Build
 
+On MacOS 10.14:
+
 ```
 % swift build -Xswiftc "-target" -Xswiftc "x86_64-apple-macosx10.14"
+```
+
+On Linux:
+
+```
+% swift build
 ```
 
 ### Parse an HDT file
@@ -26,7 +34,6 @@ _:b10 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/
 
 This project is early in development, and has many limitations:
 
-* Currently only works on MacOS 10.14 (while the code compiles on Linux, it will crash on some HDT inputs)
 * Only serializing the entire HDT file is possible (triple pattern matching is planned for the future)
 * Only "Four Part" dictionary encoding is currently supported
 * Only "Log64" encoding of bitmap triples values is currently supported
