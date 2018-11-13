@@ -284,36 +284,67 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
     }
     
     private func unicodeUnescaped(_ orig: String) -> String {
-        var s = orig
         // unescape \u and \U hex codes
-        let input = s as NSString
-        let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
-        let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
-        CFStringTransform(unescaped, nil, transform, true)
         #if os(macOS)
-        s = unescaped as String
-        #else
-        let nss = "\(unescaped)"
-        s = nss as String
-        #endif
+        let transform = StringTransform(rawValue: "Any-Hex/C")
+        let s = orig.applyingTransform(transform, reverse: true)!
         return s
+        #else
+        var ss = ""
+        var i = orig.startIndex
+        while i != orig.endIndex {
+            if orig.suffix(from: i).hasPrefix("\\u") {
+                guard let ii = orig.index(i, offsetBy: 2, limitedBy: orig.endIndex) else {
+                    break
+                }
+                i = ii
+                let code = orig.suffix(from: i).prefix(4)
+                if let n = UInt32(code, radix: 16), let us = Unicode.Scalar(n) {
+                    ss.append(Character(us))
+                }
+                guard let iii = orig.index(i, offsetBy: 4, limitedBy: orig.endIndex) else {
+                    break
+                }
+                i = iii
+            } else if orig.suffix(from: i).hasPrefix("\\U") {
+                guard let ii = orig.index(i, offsetBy: 2, limitedBy: orig.endIndex) else {
+                    break
+                }
+                i = ii
+                let code = orig.suffix(from: i).prefix(8)
+                if let n = UInt32(code, radix: 16), let us = Unicode.Scalar(n) {
+                    ss.append(Character(us))
+                }
+                guard let iii = orig.index(i, offsetBy: 8, limitedBy: orig.endIndex) else {
+                    break
+                }
+                i = iii
+            } else {
+                // OPTIMIZE: instead of incrementing by single characters, find the index of the next backslash
+                ss.append(orig[i])
+                i = orig.index(after: i)
+            }
+        }
+        return ss
+        #endif
     }
     
-    private func unicodeEscaped(_ orig: String) -> String {
-        var s = orig
-        // escape \u and \U hex codes
-        let input = s as NSString
-        let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
-        let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
-        CFStringTransform(unescaped, nil, transform, false)
-        #if os(macOS)
-        s = unescaped as String
-        #else
-        let nss = "\(unescaped)"
-        s = nss as String
-        #endif
-        return s
-    }
+//    private func unicodeEscaped(_ orig: String) -> String {
+//        var s = orig
+//        // escape \u and \U hex codes
+//        let input = s as NSString
+//        let unescaped : CFMutableString = input.mutableCopy() as! CFMutableString
+//        let transform = "Any-Hex/C".mutableCopy() as! CFMutableString
+//        CFStringTransform(unescaped, nil, transform, false)
+//        #if os(macOS)
+//        s = unescaped as String
+//        #else
+//        // TODO: this will fail on linux; mirror the manual escaping process in unicodeUnescaped
+//        let nss = "\(unescaped)"
+//        s = nss as String
+//        #endif
+//        return s
+//    }
     
     private func term(from orig: String, for id: HDT.TermID) throws -> Term {
         /**
