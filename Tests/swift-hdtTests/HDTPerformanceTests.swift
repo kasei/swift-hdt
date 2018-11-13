@@ -13,7 +13,8 @@ final class HDTPerformanceTests: XCTestCase {
         ]
     
     override func setUp() {
-        self.filename = "/Users/greg/data/datasets/swdf-2012-11-28.hdt"
+        let datasetPath = ProcessInfo.processInfo.environment["HDT_TEST_DATASET_PATH"] ?? "/Users/greg/data/datasets"
+        self.filename = "\(datasetPath)/swdf-2012-11-28.hdt"
         self.p = try! HDTParser(filename: filename)
     }
     

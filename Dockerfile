@@ -18,5 +18,6 @@ RUN swift build -c release
 EXPOSE 8080
 VOLUME ["/data"]
 ENV PATH="/work:/work/.build/debug:${PATH}"
+ENV HDT_TEST_DATASET_PATH="/data"
 
 CMD ["hdt-info"]

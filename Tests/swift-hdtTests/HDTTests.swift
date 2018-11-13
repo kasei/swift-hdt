@@ -9,12 +9,16 @@ final class HDTTests: XCTestCase {
     
     static var allTests = [
         ("testHDTDictionary_i2t", testHDTDictionary_i2t),
+        ("testHDTDictionary_t2i", testHDTDictionary_t2i),
         ("testHDTTriplesParse", testHDTTriplesParse),
+        ("testHDTTriples", testHDTTriples),
         ("testHDTParse", testHDTParse),
+        ("testHDTIdSequence", testHDTIdSequence),
         ]
     
     override func setUp() {
-        self.filename = "/Users/greg/data/datasets/swdf-2012-11-28.hdt"
+        let datasetPath = ProcessInfo.processInfo.environment["HDT_TEST_DATASET_PATH"] ?? "/Users/greg/data/datasets"
+        self.filename = "\(datasetPath)/swdf-2012-11-28.hdt"
         self.p = try! HDTParser(filename: filename)
     }
     
@@ -33,7 +37,7 @@ final class HDTTests: XCTestCase {
         let hdt = try p.parse()
         
         do {
-            let offset : Int64 = 1819
+            let offset : off_t = 1819
             let termDictionary = try hdt.readDictionary(at: offset)
             XCTAssertEqual(termDictionary.count, 76881)
             
@@ -53,7 +57,7 @@ final class HDTTests: XCTestCase {
         let hdt = try p.parse()
         
         do {
-            let offset : Int64 = 1819
+            let offset : off_t = 1819
             let termDictionary = try hdt.readDictionary(at: offset)
             XCTAssertEqual(termDictionary.count, 76881)
             
