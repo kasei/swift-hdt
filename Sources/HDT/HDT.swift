@@ -331,3 +331,34 @@ public extension HDT {
         }
     }
 }
+
+public class HDTRDFParser: RDFParser {
+    public enum Error: Swift.Error {
+        case invalid
+    }
+    
+    public var mediaTypes: Set<String>
+    required public init() {
+        mediaTypes = ["application/hdt"]
+    }
+    
+//    public static func register() {
+//        RDFSerializationConfiguration.shared.registerParser(self, withType: "application/hdt", extensions: [".hdt"], mediaTypes: [])
+//    }
+    
+    public func parse(string: String, mediaType: String, base: String? = nil, handleTriple: @escaping TripleHandler) throws -> Int {
+        throw Error.invalid
+    }
+    
+    public func parseFile(_ filename: String, mediaType: String, base: String? = nil, handleTriple: @escaping TripleHandler) throws -> Int {
+        let p = try HDTParser(filename: filename)
+        let hdt = try p.parse()
+        let triples = try hdt.triples()
+        var count = 0
+        for t in triples {
+            handleTriple(t.subject, t.predicate, t.object)
+            count += 1
+        }
+        return count
+    }
+}
