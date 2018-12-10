@@ -196,8 +196,6 @@ extension HDT: CustomDebugStringConvertible {
 
 public extension HDT {
     private class HDTTriplesIterator<I: IteratorProtocol>: IteratorProtocol where I.Element == Triple {
-        typealias Element = Triple
-        
         var hdt: HDT
         var triples: I
         
@@ -210,12 +208,18 @@ public extension HDT {
             return triples.next()
         }
     }
-
+    
     func hdtDictionary() throws -> HDTDictionaryProtocol {
         var dictionary = try readDictionary(at: self.dictionaryMetadata.offset)
         dictionary.simplifyBlankNodeIdentifiers = self.simplifyBlankNodeIdentifiers
         return dictionary
     }
+    
+    // TODO: add code to support loading directly into a kineo model using:
+    //           MemoryQuadStore.load(version:dictionary:quads:)
+    //       materialize predicates and then re-map subjects/objects that
+    //       appear as predicates to their predicate ID values.
+    //       use high bits to separate ID spaces of predicates and subject/objects
     
     public func triples() throws -> AnyIterator<Triple> {
         let dictionary = try hdtDictionary()
@@ -338,12 +342,14 @@ public class HDTRDFParser: RDFParser {
     }
     
     public var mediaTypes: Set<String>
+    public static var canonicalMediaType = "application/hdt"
+    public static var canonicalFileExtensions = [".hdt"]
     required public init() {
-        mediaTypes = ["application/hdt"]
+        mediaTypes = [HDTRDFParser.canonicalMediaType]
     }
     
 //    public static func register() {
-//        RDFSerializationConfiguration.shared.registerParser(self, withType: "application/hdt", extensions: [".hdt"], mediaTypes: [])
+//        RDFSerializationConfiguration.shared.registerParser(self, withType: HDTRDFParser.canonicalMediaType, extensions: HDTRDFParser.canonicalFileExtensions, mediaTypes: [])
 //    }
     
     public func parse(string: String, mediaType: String, base: String? = nil, handleTriple: @escaping TripleHandler) throws -> Int {

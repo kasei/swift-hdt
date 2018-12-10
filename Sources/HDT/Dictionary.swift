@@ -509,7 +509,9 @@ public final class HDTLazyFourPartDictionary : HDTDictionaryProtocol {
         let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
         if crc.crc8 != expectedCRC8 {
-            throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+            let d = Int(offset) + readBuffer.distance(to: ptr) - 1
+            let s = String(format: "CRC8 failure at %d: got %02x, expected %02x", d, Int(crc.crc8), Int(expectedCRC8))
+            throw HDTError.error(s)
         }
 
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))

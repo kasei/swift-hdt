@@ -10,9 +10,9 @@ let package = Package(
         .library( name: "HDT", targets: ["HDT"]),
     ],
     dependencies: [
-		.package(url: "https://github.com/kasei/swift-sparql-syntax.git", .upToNextMinor(from: "0.0.84")),
+		.package(url: "https://github.com/kasei/swift-sparql-syntax.git", .upToNextMinor(from: "0.0.85")),
 		.package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", from: "0.8.0"),
-		.package(url: "https://github.com/kasei/kineo.git", .upToNextMinor(from: "0.0.49")),
+		.package(url: "https://github.com/kasei/kineo.git", .upToNextMinor(from: "0.0.50")),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.

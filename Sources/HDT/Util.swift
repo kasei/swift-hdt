@@ -164,7 +164,9 @@ func readSequenceLazy(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t
     let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     ptr += 1
     if crc.crc8 != expectedCRC8 {
-        throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+        let d = Int(offset) + readBuffer.distance(to: ptr) - 1
+        let s = String(format: "CRC8 failure at %d: got %02x, expected %02x", d, Int(crc.crc8), Int(expectedCRC8))
+        throw HDTError.error(s)
     }
     
     let arraySize = (bits * entriesCount + 7) / 8
@@ -181,7 +183,9 @@ func readSequenceLazy(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t
     let crcLength = 4
     ptr += crcLength
     if crc32.crc32 != expectedCRC32 {
-        throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+        let d = Int(offset) + readBuffer.distance(to: ptr) - crcLength
+        let s = String(format: "CRC32 failure at %d: got %08x, expected %08x", d, crc32.crc32, expectedCRC32)
+        throw HDTError.error(s)
     }
     
     let length = Int64(readBuffer.distance(to: ptr))
@@ -217,7 +221,9 @@ func readSequenceImmediate(from mmappedPtr: UnsafeMutableRawPointer, at offset: 
     let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     ptr += 1
     if crc.crc8 != expectedCRC8 {
-        throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+        let d = Int(offset) + readBuffer.distance(to: ptr) - 1
+        let s = String(format: "CRC8 failure at %d: got %02x, expected %02x", d, Int(crc.crc8), Int(expectedCRC8))
+        throw HDTError.error(s)
     }
 
     let arraySize = (bits * entriesCount + 7) / 8
@@ -234,7 +240,9 @@ func readSequenceImmediate(from mmappedPtr: UnsafeMutableRawPointer, at offset: 
     let crcLength = 4
     ptr += crcLength
     if crc32.crc32 != expectedCRC32 {
-        throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+        let d = Int(offset) + readBuffer.distance(to: ptr) - crcLength
+        let s = String(format: "CRC32 failure at %d: got %08x, expected %08x", d, crc32.crc32, expectedCRC32)
+        throw HDTError.error(s)
     }
 
     let length = Int64(readBuffer.distance(to: ptr))
@@ -262,7 +270,9 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
     ptr += 1
     if crc.crc8 != expectedCRC8 {
-        throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+        let d = Int(offset) + readBuffer.distance(to: ptr) - 1
+        let s = String(format: "CRC8 failure at %d: got %02x, expected %02x", d, Int(crc.crc8), Int(expectedCRC8))
+        throw HDTError.error(s)
     }
 
     let crc32Start = ptr
@@ -305,7 +315,9 @@ func readBitmap(from mmappedPtr: UnsafeMutableRawPointer, at offset: off_t) thro
     let crcLength = 4
     ptr += crcLength
     if crc32.crc32 != expectedCRC32 {
-        throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+        let d = Int(offset) + readBuffer.distance(to: ptr) - crcLength
+        let s = String(format: "CRC32 failure at %d: got %08x, expected %08x", d, crc32.crc32, expectedCRC32)
+        throw HDTError.error(s)
     }
 
     let length = Int64(readBuffer.distance(to: ptr))

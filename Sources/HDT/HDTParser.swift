@@ -104,15 +104,17 @@ public class HDTParser {
         }
         
         var ptr = readBuffer + Int(typeLength)
-        _ = Int(readVByte(&ptr)) // string count
+        let stringCount = Int(readVByte(&ptr)) // string count
         let bytesCount = Int(readVByte(&ptr))
-        _ = Int(readVByte(&ptr)) // block size
-        
+        let blockSize = Int(readVByte(&ptr)) // block size
+
         let crc = CRC8(crcStart, length: crcStart.distance(to: ptr))
         let expectedCRC8 = ptr.assumingMemoryBound(to: UInt8.self).pointee
         ptr += 1
         if crc.crc8 != expectedCRC8 {
-            throw HDTError.error("CRC8 failure: \(crc.crc8) != \(expectedCRC8)")
+            let d = Int(offset) + readBuffer.distance(to: ptr) - 1
+            let s = String(format: "CRC8 failure at %d: got %02x, expected %02x", d, Int(crc.crc8), Int(expectedCRC8))
+            throw HDTError.error(s)
         }
         
         let dictionaryHeaderLength = Int64(readBuffer.distance(to: ptr))
@@ -129,7 +131,9 @@ public class HDTParser {
         let crcLength = 4
         ptr += crcLength
         if crc32.crc32 != expectedCRC32 {
-            throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+            let d = Int(offset) + readBuffer.distance(to: ptr) - crcLength
+            let s = String(format: "CRC32 failure at %d: got %08x, expected %08x", d, crc32.crc32, expectedCRC32)
+            throw HDTError.error(s)
         }
 
         let length = dictionaryHeaderLength + blocksLength + dataLength + Int64(crcLength)

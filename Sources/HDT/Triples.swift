@@ -131,7 +131,9 @@ public final class HDTListTriples: HDTTriples {
         let crcLength = 4
         ptr += crcLength
         if crc32.crc32 != expectedCRC32 {
-            throw HDTError.error("CRC32 failure: \(crc32.value) != \(expectedCRC32)")
+            let d = Int(offset) + readBuffer.distance(to: ptr) - crcLength
+            let s = String(format: "CRC32 failure at %d: got %08x, expected %08x", d, crc32.crc32, expectedCRC32)
+            throw HDTError.error(s)
         }
         
         return AnyIterator(t.makeIterator())
