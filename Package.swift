@@ -24,6 +24,9 @@ let package = Package(
             name: "hdt-parse",
             dependencies: ["HDT", "Kineo"]),
         .target(
+            name: "hdt-write",
+            dependencies: ["HDT", "Kineo"]),
+        .target(
             name: "hdt-info",
             dependencies: ["HDT"]),
         .testTarget(
