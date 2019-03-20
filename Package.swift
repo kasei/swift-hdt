@@ -10,8 +10,8 @@ let package = Package(
         .library( name: "HDT", targets: ["HDT"]),
     ],
     dependencies: [
-		.package(url: "https://github.com/kasei/swift-sparql-syntax.git", .branch("window")),
-		.package(url: "https://github.com/kasei/kineo.git", .branch("window")),
+		.package(url: "https://github.com/kasei/swift-sparql-syntax.git", .upToNextMinor(from: "0.0.92")),
+		.package(url: "https://github.com/kasei/kineo.git", .upToNextMinor(from: "0.0.64")),
 		.package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", from: "0.8.0")
     ],
     targets: [
